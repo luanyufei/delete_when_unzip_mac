@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Xcode & Swift Build Artifacts
+.build/
+*.build/
+*.app/
+*.app
+*.dylib
+*.o
+*.swp
+*~
+
+# Excluded project documents & temp files
+plan.md
+SKILL.md
+skill.md
+app_icon.png
+
+# Binaries
+*.exe
+unrar.exe
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDEs
+.vscode/
+.idea/

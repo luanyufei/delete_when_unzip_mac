@@ -1,76 +1,109 @@
-# Delete When Unzip
+# DeleteWhenUnzipMac
+
+> **Notice**: This project is a macOS-native Swift fork of [auto-Dog/delete_when_unzip](https://github.com/auto-Dog/delete_when_unzip).
+> 
+> ⚠️ **Early Development Stage**: DeleteWhenUnzipMac is currently in active early development. Official prebuilt releases (`.dmg` / `.app`) will be available within a few weeks. If you want to try it today, follow the build instructions below to compile from source.
 
 ---
+
+## The Problem
+
+When extracting a 50 GB archive on a disk with only 20 GB of free space, standard unarchivers fail immediately with "Disk Full" errors.
+
+The original Python project solves this on Windows by progressively truncating chunks from the input file as data is decompressed. However, on traditional filesystems, repeatedly shifting bytes forward incurs $O(N^2)$ disk writes—extracting 50 GB could cause over 100 TB of repetitive NAND writes on your SSD.
+
+## The macOS Native Solution
+
+**DeleteWhenUnzipMac** is a ground-up rewrite in pure Swift and SwiftUI tailored specifically for Apple Silicon and Intel Macs:
+
+- **APFS File Hole Punching (`F_PUNCHHOLE`)**: Instead of copying bytes forward on disk, we issue native XNU kernel `fcntl(fd, F_PUNCHHOLE, ...)` calls to deallocate underlying physical blocks in $O(1)$ time. This frees up disk space immediately with **zero extra disk writes and zero SSD wear**.
+- **Unified Engine**: Powered directly by `libarchive` via a native C bridge, handling ZIP, RAR, TAR, GZIP, and 7-Zip in a single binary.
+- **Multi-Volume Support**: Automatically detects `.part1.rar`, `.z01`, `.zip.001`, `.r01`, and `.7z.001` sequences, safely deleting each volume the moment it has been fully decompressed.
+- **Smart Filename Encoding**: Automatically detects UTF-8, GBK/GB18030, Shift-JIS, and CP437 to prevent garbled filenames from Windows archives.
+- **Native SwiftUI Interface & CLI**: Comes with a clean Mac desktop app (drag & drop, live disk space monitoring, password prompts) and a scriptable command-line tool.
+
+---
+
+## Quick Start & Building from Source
+
+### Prerequisites
+
+You will need:
+- macOS 13.0 (Ventura) or later
+- Xcode Command Line Tools (`xcode-select --install`)
+- `libarchive` headers installed via Homebrew:
+
+```bash
+brew install libarchive
+```
+
+### Build
+
+Clone the repository and run the build script:
+
+```bash
+git clone https://github.com/luanyufei/delete_when_unzip_mac.git
+cd delete_when_unzip_mac
+chmod +x build_macos.sh
+./build_macos.sh
+```
+
+This compiles:
+1. **`DeleteWhenUnzipMac.app`** (macOS GUI App in the project root)
+2. **`.build/bin/delete-when-unzip-mac`** (CLI executable)
+
+---
+
 ## Usage
-Install: 
-```bash
-pip install -r requirements.txt
-```
 
-Install as Agent Skill (for Codex, CC, etc.):
-```text
-Install the skill from https://github.com/auto-Dog/delete_when_unzip.git and read `skill.md`.
-```
+### 1. GUI App
 
-### When unzip single archive files:
-Single archived file, for `.zip` format:
-```bash
-python delete_when_unzip.py filepath chunk_size(byte) password(optional)
-```
-Single archived file, for `.rar` format:
-```bash
-python delete_when_unzip_rar.py filepath chunk_size(byte) password(optional)
-```
-
-### When unzip segmented ones (multi-volume archives)
-Segmented rar files, for `.zip.001`, `.z01` format:
-```bash
-python delete_when_unzip_cli.py filepath(name of the main volume) chunk_size(byte) password(optional)
-```
-
-Segmented rar files, for `.rar.001`, `.part1.rar` format:
-```bash
-python delete_when_unzip_rar_multi.py filepath(name of the main volume) chunk_size(byte) password(optional)
-```
-
-Segmented rar files, for `.rar.001`, `.part1.rar` format **(Recommand)**:
+Double-click `DeleteWhenUnzipMac.app` in Finder or run:
 
 ```bash
-python delete_when_unzip_cli.py filepath(name of the main volume) chunk_size(byte) password(optional)
+open DeleteWhenUnzipMac.app
 ```
-Note: This version uses `unrar.exe` and monitor cli progress, for windows x64. If you are using other systems, find your suitable version at [https://www.rarlab.com/download.htm](https://www.rarlab.com/download.htm).
 
-Visualize interface:
+- Drag and drop any archive or the first volume into the window.
+- The app automatically identifies the format, volume count, and target folder.
+- Review the destructive extraction warning, enter a password if required, and click **Start Extraction**.
+
+### 2. Command Line (CLI)
+
 ```bash
-python app.py
+# Basic extraction with default 10 MB chunk size
+./.build/bin/delete-when-unzip-mac game.zip
+
+# Multi-volume archive with custom 50 MB chunk size and password
+./.build/bin/delete-when-unzip-mac game.part1.rar 50 mypassword
 ```
 
 ---
 
-_对于大型游戏压缩文件解压需要翻倍磁盘空间的情况，这是一个值得拥有的工具。该工具可以边解压边删除已完成解压的部分，因此无须空间翻倍。_  
-_GOOD NEWS FOR GAMERS! Large ZIP/RAR archives can be extracted with limited disk space—no need for double the space. The tool deletes processed parts while extracting, so you don’t need extra room to keep both the full archive and the extracted files._
+## Running the Test Suite
 
-- 通常，下载并解压 100G 的游戏压缩文件需要至少 200G 的空间，这对硬盘空间有限的用户非常不友好  
-- Usually, downloading and extracting a 100G game archive requires at least 200G of disk space, which is painful for users with limited storage.
+We include an automated verification suite that tests APFS hole punch detection, filename encoding fallbacks, volume scanners, and an end-to-end extraction and deletion cycle:
 
-- 本工具利用流式解压库 `stream_unzip`，将本地压缩文件按顺序以流的形式读取到内存：每次读取固定大小的块并解压；当某部分内容解压完成后，立即删除原压缩文件中已处理的块，从而显著降低解压过程中的磁盘占用。  
-  NEW：使用 libarchive 库并实现自定义文件流读取器，支持 zip、rar、tar 等格式；在 Windows 上可通过 unrar CLI 高效解压并删除分卷 rar。  
+```bash
+xcrun swiftc -sdk $(xcrun --show-sdk-path) \
+  -parse-as-library \
+  -I .build/modules \
+  -I Sources/Clibarchive \
+  -L .build/modules \
+  -lDeleteWhenUnzipCore \
+  -I /opt/homebrew/opt/libarchive/include \
+  -L /opt/homebrew/opt/libarchive/lib \
+  -larchive \
+  -Xlinker -rpath -Xlinker "@executable_path/../modules" \
+  -Xlinker -rpath -Xlinker /opt/homebrew/opt/libarchive/lib \
+  Tests/VerificationRunner.swift \
+  -o .build/bin/run_tests && ./.build/bin/run_tests
+```
 
-- This tool uses the streaming extraction library `stream_unzip` and treats a local archive as a stream: it reads fixed-size chunks into memory and extracts them; after a chunk is processed, the corresponding part of the original archive is deleted to keep disk usage low (i.e., you don’t need double the space).  
-  NEW: A custom file streamer based on libarchive is included, supporting ZIP, RAR, TAR, etc. On Windows, an unrar CLI interface can be used to efficiently extract and delete multi-volume RAR archives.
+---
 
-- 支持单文件与**分段 zip / RAR 文件**（常见于大型游戏资源，如原神）边解压边删除；当前支持 zip、rar 等格式  
-- Supports both single archives and **segmented ZIP/RAR** archives. Deleting during extraction is supported, and RAR is supported as well.
+## Acknowledgments & License
 
-- 注意：边解压边删除存在中途解压失败的风险，失败可能导致压缩包损坏  
-- ATTENTION: If an error occurs during _extract & delete_, the archive may be damaged.
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=auto-Dog%2Fdelete_when_unzip&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=auto-Dog/delete_when_unzip&type=date&theme=dark&legend=top-left&sealed_token=xdwL7FsYDLXc-LJ6F9EsMUPtLbfUeOI0CctBsOZwrGr-tSgCxUl6du2tqNrFweG5PRv9-FChsG385agEqZtnpNvqWMqOaG6SBgOuG5Ud9QWNjy7T9Me9gw" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=auto-Dog/delete_when_unzip&type=date&legend=top-left&sealed_token=xdwL7FsYDLXc-LJ6F9EsMUPtLbfUeOI0CctBsOZwrGr-tSgCxUl6du2tqNrFweG5PRv9-FChsG385agEqZtnpNvqWMqOaG6SBgOuG5Ud9QWNjy7T9Me9gw" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=auto-Dog/delete_when_unzip&type=date&legend=top-left&sealed_token=xdwL7FsYDLXc-LJ6F9EsMUPtLbfUeOI0CctBsOZwrGr-tSgCxUl6du2tqNrFweG5PRv9-FChsG385agEqZtnpNvqWMqOaG6SBgOuG5Ud9QWNjy7T9Me9gw" />
- </picture>
-</a>
+- Original Python implementation: [@auto-Dog](https://github.com/auto-Dog) / [delete_when_unzip](https://github.com/auto-Dog/delete_when_unzip)
+- macOS Native Swift port: [luanyufei](https://github.com/luanyufei)
+- Licensed under the Apache License 2.0.
