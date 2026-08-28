@@ -13,7 +13,7 @@ let package = Package(
             targets: ["DeleteWhenUnzipCore"]
         ),
         .executable(
-            name: "delete-when-unzip-mac",
+            name: "dwum",
             targets: ["DeleteWhenUnzipCLI"]
         ),
         .executable(

@@ -35,7 +35,7 @@ xcrun swiftc -sdk "$SDK_PATH" \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipCore/Extractor/*.swift \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipCore/Engine/*.swift
 
-echo "⚡️ 2. Compiling delete-when-unzip-mac CLI executable..."
+echo "⚡️ 2. Compiling dwum CLI executable..."
 xcrun swiftc -sdk "$SDK_PATH" \
   -parse-as-library \
   -I "$MODULES_DIR" \
@@ -49,7 +49,7 @@ xcrun swiftc -sdk "$SDK_PATH" \
   -Xlinker -rpath -Xlinker "$BREW_PREFIX/lib" \
   -Xlinker -rpath -Xlinker "/usr/local/lib" \
   "$ROOT_DIR/Sources/DeleteWhenUnzipCLI/main.swift" \
-  -o "$BIN_DIR/delete-when-unzip-mac"
+  -o "$BIN_DIR/dwum"
 
 echo "🖥️ 3. Compiling DeleteWhenUnzipMac GUI executable..."
 xcrun swiftc -sdk "$SDK_PATH" \
@@ -90,5 +90,5 @@ codesign --force --deep --sign - "$APP_DIR" 2>/dev/null || true
 echo "=========================================================="
 echo "✅ Build & Package Succeeded!"
 echo "📍 macOS App Bundle: $APP_DIR"
-echo "📍 CLI Binary:       $BIN_DIR/delete-when-unzip-mac"
+echo "📍 CLI Binary:       $BIN_DIR/dwum"
 echo "=========================================================="

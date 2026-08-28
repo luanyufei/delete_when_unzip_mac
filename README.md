@@ -50,7 +50,7 @@ chmod +x build_macos.sh
 
 This compiles:
 1. **`DeleteWhenUnzipMac.app`** (macOS GUI App in the project root)
-2. **`.build/bin/delete-when-unzip-mac`** (CLI executable)
+2. **`.build/bin/dwum`** (CLI executable)
 
 ---
 
@@ -68,14 +68,14 @@ open DeleteWhenUnzipMac.app
 - The app automatically identifies the format, volume count, and target folder.
 - Review the destructive extraction warning, enter a password if required, and click **Start Extraction**.
 
-### 2. Command Line (CLI)
+### 2. Command Line (`dwum`)
 
 ```bash
 # Basic extraction with default 10 MB chunk size
-./.build/bin/delete-when-unzip-mac game.zip
+./.build/bin/dwum game.zip
 
 # Multi-volume archive with custom 50 MB chunk size and password
-./.build/bin/delete-when-unzip-mac game.part1.rar 50 mypassword
+./.build/bin/dwum game.part1.rar 50 mypassword
 ```
 
 ---

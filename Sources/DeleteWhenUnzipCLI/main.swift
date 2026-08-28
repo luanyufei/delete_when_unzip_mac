@@ -7,16 +7,16 @@ struct DeleteWhenUnzipCLI {
     static func printUsage() {
         print("""
         ========================================================
-         Delete When Unzip (macOS Native Swift CLI)
+         dwum - DeleteWhenUnzipMac (macOS Native Swift CLI)
          边解压边删除 —— APFS 物理打洞零额外写入 & 分卷即时销毁
         ========================================================
         用法:
-          delete-when-unzip <压缩文件路径> [块大小(MB)] [密码]
+          dwum <压缩文件路径> [块大小(MB)] [密码]
 
         示例:
-          delete-when-unzip game.zip
-          delete-when-unzip game.part1.rar 10 mypassword
-          delete-when-unzip archive.z01 50
+          dwum game.zip
+          dwum game.part1.rar 10 mypassword
+          dwum archive.z01 50
 
         参数说明:
           <压缩文件路径>  主压缩包或首个分卷路径 (.zip, .rar, .part1.rar, .z01 等)
