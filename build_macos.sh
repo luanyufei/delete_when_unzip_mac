@@ -18,7 +18,7 @@ mkdir -p "$MODULES_DIR" "$BIN_DIR"
 
 BREW_PREFIX="$(brew --prefix libarchive 2>/dev/null || echo '/opt/homebrew/opt/libarchive')"
 
-echo "📦 1. Compiling DeleteWhenUnzipCore dynamic library..."
+echo "📦 1. Compiling DeleteWhenUnzipCore static library..."
 xcrun swiftc -sdk "$SDK_PATH" \
   -emit-module \
   -module-name DeleteWhenUnzipCore \
@@ -27,25 +27,23 @@ xcrun swiftc -sdk "$SDK_PATH" \
   -I "$BREW_PREFIX/include" \
   -L "$BREW_PREFIX/lib" \
   -larchive \
-  -emit-library \
-  -o "$MODULES_DIR/libDeleteWhenUnzipCore.dylib" \
+  -emit-library -static \
+  -o "$MODULES_DIR/libDeleteWhenUnzipCore.a" \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipCore/Models/*.swift \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipCore/IO/*.swift \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipCore/Scanning/*.swift \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipCore/Extractor/*.swift \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipCore/Engine/*.swift
 
-echo "⚡️ 2. Compiling dwum CLI executable..."
+echo "⚡️ 2. Compiling standalone dwum CLI executable..."
 xcrun swiftc -sdk "$SDK_PATH" \
   -parse-as-library \
   -I "$MODULES_DIR" \
   -I "$ROOT_DIR/Sources/Clibarchive" \
-  -L "$MODULES_DIR" \
-  -lDeleteWhenUnzipCore \
+  "$MODULES_DIR/libDeleteWhenUnzipCore.a" \
   -I "$BREW_PREFIX/include" \
   -L "$BREW_PREFIX/lib" \
   -larchive \
-  -Xlinker -rpath -Xlinker "@executable_path/../modules" \
   -Xlinker -rpath -Xlinker "$BREW_PREFIX/lib" \
   -Xlinker -rpath -Xlinker "/usr/local/lib" \
   "$ROOT_DIR/Sources/DeleteWhenUnzipCLI/main.swift" \
@@ -56,14 +54,13 @@ xcrun swiftc -sdk "$SDK_PATH" \
   -parse-as-library \
   -I "$MODULES_DIR" \
   -I "$ROOT_DIR/Sources/Clibarchive" \
-  -L "$MODULES_DIR" \
-  -lDeleteWhenUnzipCore \
+  "$MODULES_DIR/libDeleteWhenUnzipCore.a" \
   -I "$BREW_PREFIX/include" \
   -L "$BREW_PREFIX/lib" \
   -larchive \
   -Xlinker -rpath -Xlinker "@executable_path/../Frameworks" \
-  -Xlinker -rpath -Xlinker "@executable_path/../modules" \
   -Xlinker -rpath -Xlinker "$BREW_PREFIX/lib" \
+  -Xlinker -rpath -Xlinker "/usr/local/lib" \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipApp/*.swift \
   "$ROOT_DIR"/Sources/DeleteWhenUnzipApp/UI/*.swift \
   -o "$BIN_DIR/DeleteWhenUnzipMac"
@@ -75,7 +72,6 @@ mkdir -p "$APP_DIR/Contents/Frameworks"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BIN_DIR/DeleteWhenUnzipMac" "$APP_DIR/Contents/MacOS/"
-cp "$MODULES_DIR/libDeleteWhenUnzipCore.dylib" "$APP_DIR/Contents/Frameworks/"
 cp "$ROOT_DIR/Info.plist" "$APP_DIR/Contents/"
 
 if [ -f "$ROOT_DIR/AppIcon.icns" ]; then
