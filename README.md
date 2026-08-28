@@ -1,6 +1,6 @@
 # DeleteWhenUnzipMac
 
-> **Notice**: This project is a macOS-native Swift fork of [auto-Dog/delete_when_unzip](https://github.com/auto-Dog/delete_when_unzip).
+> **Notice**: This project is a macOS-native Swift rewrite inspired by and based on [auto-Dog/delete_when_unzip](https://github.com/auto-Dog/delete_when_unzip).
 > 
 > ⚠️ **Early Development Stage**: DeleteWhenUnzipMac is currently in active early development. Official prebuilt releases (`.dmg` / `.app`) will be available within a few weeks. If you want to try it today, follow the build instructions below to compile from source.
 
