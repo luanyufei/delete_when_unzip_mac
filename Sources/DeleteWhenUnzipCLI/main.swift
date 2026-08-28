@@ -4,6 +4,8 @@ import DeleteWhenUnzipCore
 @main
 struct DeleteWhenUnzipCLI {
 
+    static let version = "0.1.2"
+
     static func printUsage() {
         print("""
         ========================================================
@@ -12,11 +14,15 @@ struct DeleteWhenUnzipCLI {
         ========================================================
         用法:
           dwum <压缩文件路径> [块大小(MB)] [密码]
+          dwum update               检查并自动更新到最新版本
+          dwum --version | -v       查看当前版本信息
+          dwum --help | -h          查看帮助说明
 
         示例:
           dwum game.zip
           dwum game.part1.rar 10 mypassword
           dwum archive.z01 50
+          dwum update
 
         参数说明:
           <压缩文件路径>  主压缩包或首个分卷路径 (.zip, .rar, .part1.rar, .z01 等)
@@ -33,13 +39,26 @@ struct DeleteWhenUnzipCLI {
             exit(1)
         }
 
-        let inputPath = args[1]
-        if inputPath == "-h" || inputPath == "--help" {
+        let firstArg = args[1]
+
+        switch firstArg {
+        case "-h", "--help", "help":
             printUsage()
             exit(0)
+
+        case "-v", "--version", "version":
+            print("dwum version \(version) (macOS pure Swift native)")
+            exit(0)
+
+        case "update", "upgrade":
+            await performUpdate()
+            exit(0)
+
+        default:
+            break
         }
 
-        let fileURL = URL(fileURLWithPath: inputPath)
+        let fileURL = URL(fileURLWithPath: firstArg)
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             print("❌ 错误: 文件不存在 -> \(fileURL.path)")
             exit(1)
@@ -144,8 +163,66 @@ struct DeleteWhenUnzipCLI {
         let totalStr = DiskSpaceMonitor.formatBytes(progress.totalBytes)
 
         let line = String(format: "\r[%@] %3d%% | %@ / %@ | %@", bar, percent, processedStr, totalStr, progress.currentFileName)
-        // 限制单行长度防止溢出
         let truncatedLine = line.count > 100 ? String(line.prefix(97)) + "..." : line
         FileHandle.standardOutput.write(truncatedLine.data(using: .utf8)!)
+    }
+
+    private static func performUpdate() async {
+        print("🔄 正在检查 dwum 最新版本...")
+        let execPath = CommandLine.arguments[0]
+        let isHomebrew = execPath.contains("Cellar") || execPath.contains("/opt/homebrew") || execPath.contains("/usr/local/Homebrew")
+
+        if isHomebrew {
+            print("🍺 检测到当前通过 Homebrew 安装，正在通过 Homebrew 执行升级...")
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["brew", "upgrade", "dwum"]
+            process.standardInput = FileHandle.standardInput
+            process.standardOutput = FileHandle.standardOutput
+            process.standardError = FileHandle.standardError
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+                if process.terminationStatus == 0 {
+                    print("\n✨ dwum 升级完成！")
+                } else {
+                    print("\nℹ️ 提示: 若未检测到更新，可先运行 'brew update' 后再试。")
+                }
+            } catch {
+                print("❌ 启动 Homebrew 失败: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        // 独立二进制安装下的更新检查
+        guard let url = URL(string: "https://api.github.com/repos/luanyufei/delete_when_unzip_mac/releases") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        request.setValue("dwum-updater", forHTTPHeaderField: "User-Agent")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("❌ 获取版本信息失败，请检查网络连接。")
+                return
+            }
+
+            if let releases = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+               let firstRelease = releases.first,
+               let tagName = firstRelease["tag_name"] as? String {
+                let latestVersion = tagName.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
+                if latestVersion == version {
+                    print("✨ 当前已是最新版本 (v\(version))，无需更新。")
+                } else {
+                    print("🚀 发现新版本: v\(latestVersion)（当前版本: v\(version)）")
+                    print("👉 请运行 'brew upgrade dwum' 或访问 https://github.com/luanyufei/delete_when_unzip_mac/releases 获取最新版。")
+                }
+            } else {
+                print("✨ 当前已是最新版本 (v\(version))。")
+            }
+        } catch {
+            print("❌ 检查更新时出错: \(error.localizedDescription)")
+        }
     }
 }

@@ -26,7 +26,7 @@ The original Python project solves this on Windows by progressively truncating c
 
 ## Installation & Quick Start
 
-### 1. Homebrew (Recommended for CLI)
+### 1. Homebrew (CLI Installation)
 
 Install the standalone `dwum` command with a single line:
 
@@ -38,6 +38,11 @@ Once installed, run `dwum` directly anywhere:
 
 ```bash
 dwum archive.zip
+```
+
+To update `dwum` to the latest release at any time:
+```bash
+dwum update
 ```
 
 ---
@@ -81,10 +86,16 @@ open DeleteWhenUnzipMac.app
 
 ```bash
 # Basic extraction with default 10 MB chunk size
-./.build/bin/dwum game.zip
+dwum game.zip
 
 # Multi-volume archive with custom 50 MB chunk size and password
-./.build/bin/dwum game.part1.rar 50 mypassword
+dwum game.part1.rar 50 mypassword
+
+# Check version
+dwum --version
+
+# Self-update to latest release
+dwum update
 ```
 
 ---
