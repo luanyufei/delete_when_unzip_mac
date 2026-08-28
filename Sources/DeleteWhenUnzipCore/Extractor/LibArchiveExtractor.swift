@@ -66,11 +66,18 @@ public final class LibArchiveExtractor: Extractor, @unchecked Sendable {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
+        let context = LibArchiveReadContext(source: source)
+        let contextPtr = Unmanaged.passRetained(context).toOpaque()
+
         let archive = archive_read_new()
         guard let archive = archive else {
+            Unmanaged<LibArchiveReadContext>.fromOpaque(contextPtr).release()
             throw ExtractionError.archiveOpenFailed("无法分配 libarchive 读取结构体")
         }
-        defer { archive_read_free(archive) }
+        defer {
+            archive_read_free(archive)
+            Unmanaged<LibArchiveReadContext>.fromOpaque(contextPtr).release()
+        }
 
         archive_read_support_filter_all(archive)
         archive_read_support_format_all(archive)
@@ -78,10 +85,6 @@ public final class LibArchiveExtractor: Extractor, @unchecked Sendable {
         if let pwd = password, !pwd.isEmpty {
             archive_read_add_passphrase(archive, pwd)
         }
-
-        let context = LibArchiveReadContext(source: source)
-        let contextPtr = Unmanaged.passRetained(context).toOpaque()
-        defer { Unmanaged<LibArchiveReadContext>.fromOpaque(contextPtr).release() }
 
         archive_read_set_callback_data(archive, contextPtr)
         archive_read_set_read_callback(archive, archiveReadCallback)
@@ -173,6 +176,9 @@ public final class LibArchiveExtractor: Extractor, @unchecked Sendable {
                 try? writeHandle.close()
             }
         }
+
+        // 解压全部成功完成，执行源文件最终物理销毁
+        source.finalizeAndRemove()
 
         // 最终报告 100% 进度
         progressHandler(ExtractionProgress(

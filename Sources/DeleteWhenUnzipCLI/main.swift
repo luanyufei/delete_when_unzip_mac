@@ -4,7 +4,7 @@ import DeleteWhenUnzipCore
 @main
 struct DeleteWhenUnzipCLI {
 
-    static let version = "0.1.3"
+    static let version = "0.1.4"
 
     static func printUsage() {
         print("""

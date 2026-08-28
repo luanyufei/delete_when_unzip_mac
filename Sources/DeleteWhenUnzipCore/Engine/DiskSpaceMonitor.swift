@@ -4,8 +4,13 @@ public struct DiskSpaceMonitor: Sendable {
 
     /// 查询指定路径所在磁盘卷的可用空间字节数
     public static func availableDiskSpace(at url: URL) -> UInt64 {
+        var targetURL = url
+        if !FileManager.default.fileExists(atPath: targetURL.path) {
+            targetURL = targetURL.deletingLastPathComponent()
+        }
+
         do {
-            let values = try url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+            let values = try targetURL.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
             if let important = values.volumeAvailableCapacityForImportantUsage, important > 0 {
                 return UInt64(important)
             }
@@ -15,7 +20,7 @@ public struct DiskSpaceMonitor: Sendable {
         } catch {}
 
         var stat = statfs()
-        let path = url.path
+        let path = targetURL.path
         if statfs((path as NSString).fileSystemRepresentation, &stat) == 0 {
             return UInt64(stat.f_bavail) * UInt64(stat.f_bsize)
         }

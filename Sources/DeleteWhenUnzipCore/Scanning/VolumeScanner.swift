@@ -8,20 +8,20 @@ public struct VolumeScanner: Sendable {
         let patterns: [String] = [
             #"(.*)\.part\d+\.rar$"#,
             #"(.*)\.part\d+$"#,
-            #"(.*)\.z\d+$"#,
-            #"(.*)\.r\d+$"#,
-            #"(.*)\.zip$"#,
-            #"(.*)\.rar$"#,
-            #"(.*)\.7z\.\d+$"#,
-            #"(.*)\.7z$"#,
-            #"(.*)\.tar\.gz$"#,
-            #"(.*)\.tar$"#,
-            #"(.*)\.gz$"#,
             #"(.*)\.zip\.\d+$"#,
             #"(.*)\.zip\.z\d+$"#,
             #"(.*)\.rar\.\d+$"#,
             #"(.*)\.rar\.part\d+$"#,
-            #"(.*)\.\d+$"#
+            #"(.*)\.7z\.\d+$"#,
+            #"(.*)\.tar\.gz$"#,
+            #"(.*)\.z\d+$"#,
+            #"(.*)\.r\d+$"#,
+            #"(.*)\.zip$"#,
+            #"(.*)\.rar$"#,
+            #"(.*)\.7z$"#,
+            #"(.*)\.tar$"#,
+            #"(.*)\.gz$"#,
+            #"(.*)\.\d{3,}$"#
         ]
 
         for pat in patterns {
@@ -30,6 +30,7 @@ public struct VolumeScanner: Sendable {
                 if let match = regex.firstMatch(in: base, options: [], range: range) {
                     if let captureRange = Range(match.range(at: 1), in: base) {
                         base = String(base[captureRange])
+                        break
                     }
                 }
             }

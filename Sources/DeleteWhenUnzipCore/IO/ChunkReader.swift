@@ -5,6 +5,7 @@ public protocol StreamDataSource: AnyObject {
     var consumedBytes: UInt64 { get }
     func read(into buffer: UnsafeMutablePointer<UInt8>, maxLength: Int) throws -> Int
     func close()
+    func finalizeAndRemove()
 }
 
 public final class ChunkReader: StreamDataSource {
@@ -77,8 +78,7 @@ public final class ChunkReader: StreamDataSource {
 
         if bytesRead == 0 {
             // 到达文件末尾，清理并删除原文件
-            close()
-            try? FileManager.default.removeItem(at: fileURL)
+            finalizeAndRemove()
         }
 
         return bytesRead
@@ -92,6 +92,11 @@ public final class ChunkReader: StreamDataSource {
             fileHandle = nil
         }
         fd = -1
+    }
+
+    public func finalizeAndRemove() {
+        close()
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
     deinit {

@@ -100,6 +100,13 @@ public final class VolumeChainReader: StreamDataSource {
         currentFd = -1
     }
 
+    public func finalizeAndRemove() {
+        close()
+        for url in volumeURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     deinit {
         close()
     }
