@@ -4,7 +4,7 @@ import DeleteWhenUnzipCore
 @main
 struct DeleteWhenUnzipCLI {
 
-    static let version = "0.1.2"
+    static let version = "0.1.3"
 
     static func printUsage() {
         print("""
@@ -170,9 +170,13 @@ struct DeleteWhenUnzipCLI {
     private static func performUpdate() async {
         print("🔄 正在检查 dwum 最新版本...")
         let resolvedPath = Bundle.main.executableURL?.resolvingSymlinksInPath().path ?? CommandLine.arguments[0]
-        let isHomebrew = resolvedPath.contains("Cellar") || resolvedPath.contains("/opt/homebrew") || resolvedPath.contains("/usr/local") || FileManager.default.fileExists(atPath: "/opt/homebrew/bin/dwum")
+        let isHomebrewInstalled = FileManager.default.fileExists(atPath: "/opt/homebrew/bin/dwum") ||
+                                  FileManager.default.fileExists(atPath: "/usr/local/bin/dwum") ||
+                                  resolvedPath.contains("Cellar") ||
+                                  resolvedPath.contains("/opt/homebrew") ||
+                                  resolvedPath.contains("/usr/local")
 
-        if isHomebrew {
+        if isHomebrewInstalled {
             print("🍺 检测到当前通过 Homebrew 安装，正在通过 Homebrew 执行升级...")
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -185,7 +189,7 @@ struct DeleteWhenUnzipCLI {
                 try process.run()
                 process.waitUntilExit()
                 if process.terminationStatus == 0 {
-                    print("\n✨ dwum 升级完成！")
+                    print("\n✨ dwum 已成功升级至最新版本！")
                 } else {
                     print("\nℹ️ 提示: 若未检测到更新，可先运行 'brew update' 后再试。")
                 }
