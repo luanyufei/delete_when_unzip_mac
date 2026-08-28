@@ -169,8 +169,8 @@ struct DeleteWhenUnzipCLI {
 
     private static func performUpdate() async {
         print("🔄 正在检查 dwum 最新版本...")
-        let execPath = CommandLine.arguments[0]
-        let isHomebrew = execPath.contains("Cellar") || execPath.contains("/opt/homebrew") || execPath.contains("/usr/local/Homebrew")
+        let resolvedPath = Bundle.main.executableURL?.resolvingSymlinksInPath().path ?? CommandLine.arguments[0]
+        let isHomebrew = resolvedPath.contains("Cellar") || resolvedPath.contains("/opt/homebrew") || resolvedPath.contains("/usr/local") || FileManager.default.fileExists(atPath: "/opt/homebrew/bin/dwum")
 
         if isHomebrew {
             print("🍺 检测到当前通过 Homebrew 安装，正在通过 Homebrew 执行升级...")
