@@ -24,23 +24,32 @@ The original Python project solves this on Windows by progressively truncating c
 
 ---
 
-## Quick Start & Building from Source
+## Installation & Quick Start
 
-### Prerequisites
+### 1. Homebrew (Recommended for CLI)
 
-You will need:
-- macOS 13.0 (Ventura) or later
-- Xcode Command Line Tools (`xcode-select --install`)
-- `libarchive` headers installed via Homebrew:
+Install the standalone `dwum` command with a single line:
 
 ```bash
-brew install libarchive
+brew install luanyufei/tap/dwum
 ```
 
-### Build
+Once installed, run `dwum` directly anywhere:
 
-Clone the repository and run the build script:
+```bash
+dwum archive.zip
+```
 
+---
+
+### 2. Building from Source (GUI App & CLI)
+
+#### Prerequisites
+- macOS 13.0 (Ventura) or later
+- Xcode Command Line Tools (`xcode-select --install`)
+- `libarchive` headers: `brew install libarchive`
+
+#### Build
 ```bash
 git clone https://github.com/luanyufei/delete_when_unzip_mac.git
 cd delete_when_unzip_mac
@@ -48,7 +57,7 @@ chmod +x build_macos.sh
 ./build_macos.sh
 ```
 
-This compiles:
+This generates:
 1. **`DeleteWhenUnzipMac.app`** (macOS GUI App in the project root)
 2. **`.build/bin/dwum`** (CLI executable)
 
