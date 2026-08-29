@@ -1,8 +1,19 @@
+<div align="center">
+
+<img src="assets/logo.png" width="160" height="160" alt="DeleteWhenUnzipMac Logo" />
+
 # DeleteWhenUnzipMac
 
-<p align="center">
-  <img src="assets/logo.png" width="180" alt="DeleteWhenUnzipMac logo">
-</p>
+**The macOS-native archiver that deletes archives while unzipping — APFS hole punching, zero SSD wear**
+
+[![macOS](https://img.shields.io/badge/macOS-13.0%2B-blue.svg?style=flat-square&logo=apple)](https://www.apple.com/macos/)
+[![Apple Silicon](https://img.shields.io/badge/Arch-Apple%20Silicon%20%7C%20Intel-orange.svg?style=flat-square)](https://www.apple.com/mac/)
+[![Swift](https://img.shields.io/badge/Swift-5.9%20%2F%206.0-F05138.svg?style=flat-square&logo=swift)](https://swift.org)
+[![License](https://img.shields.io/badge/License-Apache%202.0-green.svg?style=flat-square)](LICENSE)
+
+[The Problem](#the-problem) • [The Solution](#the-macos-native-solution) • [Installation](#installation--quick-start) • [Usage](#usage) • [Testing](#running-the-test-suite)
+
+</div>
 
 > **Notice**: This project is a macOS-native Swift rewrite inspired by and based on [auto-Dog/delete_when_unzip](https://github.com/auto-Dog/delete_when_unzip).
 > 
