@@ -4,16 +4,33 @@ import DeleteWhenUnzipCore
 @main
 struct DeleteWhenUnzipCLI {
 
-    static let version = "0.1.5"
+    static let version = "0.1.6"
     static let repoBase = "https://github.com/luanyufei/delete_when_unzip_mac"
     static let repoAPIBase = "https://api.github.com/repos/luanyufei/delete_when_unzip_mac"
 
+    static let banner =
+        """
+        ========================================================
+         dwum - DeleteWhenUnzipMac
+         边解压边删除 —— Streaming unzip with real-time space reclaim
+        ========================================================
+        """
+
+    static func printShortIntro() {
+        print("""
+        \(banner)
+
+        用法: dwum <压缩包路径> [块大小(MB)] [密码]
+              dwum update            检查并更新到最新版本
+
+        详细说明请运行: dwum --help
+        """)
+    }
+
     static func printUsage() {
         print("""
-        ========================================================
-         dwum - DeleteWhenUnzipMac (macOS Native Swift CLI)
-         边解压边删除 —— APFS 物理打洞零额外写入 & 分卷即时销毁
-        ========================================================
+        \(banner)
+
         用法:
           dwum <压缩文件路径> [块大小(MB)] [密码]
           dwum update               检查并自动更新到最新版本
@@ -37,7 +54,7 @@ struct DeleteWhenUnzipCLI {
         let args = CommandLine.arguments
 
         guard args.count >= 2 else {
-            printUsage()
+            printShortIntro()
             exit(1)
         }
 
@@ -49,7 +66,7 @@ struct DeleteWhenUnzipCLI {
             exit(0)
 
         case "-v", "--version", "version":
-            print("dwum version \(version) (macOS pure Swift native)")
+            print("dwum v\(version) (Apple Silicon)")
             exit(0)
 
         case "update", "upgrade":
