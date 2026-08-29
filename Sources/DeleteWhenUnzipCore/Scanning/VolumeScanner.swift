@@ -38,7 +38,8 @@ public struct VolumeScanner: Sendable {
         return base
     }
 
-    /// 根据给定的主分卷文件，扫描所在目录下的所有关联分卷并进行精确排序
+    /// 根据给定的主分卷文件，扫描所在目录下的所有关联分卷并进行精确排序。
+    /// 仅回收与主卷同族 (同一分卷格式) 的文件，避免同目录下其他格式分卷被误删。
     public static func scanVolumes(mainVolumeURL: URL) -> [URL] {
         let parentDir = mainVolumeURL.deletingLastPathComponent()
         let filename = mainVolumeURL.lastPathComponent
@@ -50,24 +51,43 @@ public struct VolumeScanner: Sendable {
         }
 
         let escapedBase = NSRegularExpression.escapedPattern(for: baseName)
-        let volumeRegexPatterns = [
-            #"^"# + escapedBase + #"\.z\d+$"#,
-            #"^"# + escapedBase + #"\.zip$"#,
-            #"^"# + escapedBase + #"\.zip\.\d+$"#,
-            #"^"# + escapedBase + #"\.r\d+$"#,
-            #"^"# + escapedBase + #"\.rar$"#,
-            #"^"# + escapedBase + #"\.rar\.\d+$"#,
-            #"^"# + escapedBase + #"\.part\d+\.rar$"#,
-            #"^"# + escapedBase + #"\.7z\.\d+$"#,
-            #"^"# + escapedBase + #"\.\d{3,}$"#
-        ]
+        func matches(_ item: String, _ pattern: String) -> Bool {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return false }
+            return regex.firstMatch(in: item, options: [], range: NSRange(item.startIndex..., in: item)) != nil
+        }
+        func mainMatches(_ suffixPattern: String) -> Bool {
+            matches(filename, "^" + escapedBase + suffixPattern)
+        }
+
+        // 按主卷后缀判定分卷家族 (z01/r01 家族的首卷为 .zNN/.rNN、末卷为 .zip/.rar)
+        let familyPatterns: [String]
+        if mainMatches(#"\.part\d+\.rar$"#) {
+            familyPatterns = [escapedBase + #"\.part\d+\.rar$"#]
+        } else if mainMatches(#"\.zip\.\d+$"#) {
+            familyPatterns = [escapedBase + #"\.zip\.\d+$"#]
+        } else if mainMatches(#"\.rar\.\d+$"#) {
+            familyPatterns = [escapedBase + #"\.rar\.\d+$"#]
+        } else if mainMatches(#"\.7z\.\d+$"#) {
+            familyPatterns = [escapedBase + #"\.7z\.\d+$"#]
+        } else if mainMatches(#"\.z\d+$"#) {
+            familyPatterns = [escapedBase + #"\.z\d+$"#, escapedBase + #"\.zip$"#]
+        } else if mainMatches(#"\.r\d+$"#) {
+            familyPatterns = [escapedBase + #"\.r\d+$"#, escapedBase + #"\.rar$"#]
+        } else if mainMatches(#"\.rar$"#) {
+            familyPatterns = [escapedBase + #"\.rar$"#, escapedBase + #"\.r\d+$"#]
+        } else if mainMatches(#"\.zip$"#) {
+            familyPatterns = [escapedBase + #"\.zip$"#, escapedBase + #"\.z\d+$"#]
+        } else if mainMatches(#"\.\d{3,}$"#) {
+            familyPatterns = [escapedBase + #"\.\d{3,}$"#]
+        } else {
+            familyPatterns = ["^" + NSRegularExpression.escapedPattern(for: filename) + "$"]
+        }
+        let anchoredPatterns = familyPatterns.map { "^" + $0 }
 
         var matchedFiles: [String] = []
         for item in items {
-            let itemRange = NSRange(item.startIndex..., in: item)
-            for pat in volumeRegexPatterns {
-                if let regex = try? NSRegularExpression(pattern: pat, options: .caseInsensitive),
-                   regex.firstMatch(in: item, options: [], range: itemRange) != nil {
+            for pat in anchoredPatterns {
+                if matches(item, pat) {
                     matchedFiles.append(item)
                     break
                 }
@@ -78,17 +98,17 @@ public struct VolumeScanner: Sendable {
             return [mainVolumeURL]
         }
 
-        // 对匹配到的分卷进行排序
-        // 针对 .z01, .z02, ... .zip 规则：.z01 先排，.zip 放在最后
+        // 排序: zNN/rNN 家族中 .zip/.rar 末卷排在最后，其余按自然数字序
         let hasZVolumes = matchedFiles.contains { $0.range(of: #"\.z\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil }
-        let hasZipMain = matchedFiles.contains { $0.range(of: #"\.zip$"#, options: [.regularExpression, .caseInsensitive]) != nil }
+        let hasRVolumes = matchedFiles.contains { $0.range(of: #"\.r\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil }
+        let lastVolumePattern = hasZVolumes ? #"\.zip$"# : (hasRVolumes ? #"\.rar$"# : nil)
 
         matchedFiles.sort { (a, b) -> Bool in
-            if hasZVolumes && hasZipMain {
-                let aIsZip = a.range(of: #"\.zip$"#, options: [.regularExpression, .caseInsensitive]) != nil
-                let bIsZip = b.range(of: #"\.zip$"#, options: [.regularExpression, .caseInsensitive]) != nil
-                if aIsZip != bIsZip {
-                    return !aIsZip // .zip 排在最后
+            if let lastPattern = lastVolumePattern {
+                let aIsLast = a.range(of: lastPattern, options: [.regularExpression, .caseInsensitive]) != nil
+                let bIsLast = b.range(of: lastPattern, options: [.regularExpression, .caseInsensitive]) != nil
+                if aIsLast != bIsLast {
+                    return !aIsLast // 末卷排在最后
                 }
             }
             return a.localizedStandardCompare(b) == .orderedAscending

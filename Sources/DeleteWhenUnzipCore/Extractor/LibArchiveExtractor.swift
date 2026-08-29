@@ -5,6 +5,7 @@ private final class LibArchiveReadContext {
     let source: StreamDataSource
     let internalBuffer: UnsafeMutablePointer<UInt8>
     let bufferCapacity: Int = 1024 * 1024 // 1MB 读缓冲区
+    var logicalPosition: Int64 = 0
 
     init(source: StreamDataSource) {
         self.source = source
@@ -17,6 +18,7 @@ private final class LibArchiveReadContext {
             let bytesRead = try source.read(into: internalBuffer, maxLength: bufferCapacity)
             if bytesRead > 0 {
                 bufferPtr.pointee = UnsafeRawPointer(internalBuffer)
+                logicalPosition += Int64(bytesRead)
                 return bytesRead
             } else {
                 bufferPtr.pointee = nil
@@ -25,6 +27,23 @@ private final class LibArchiveReadContext {
         } catch {
             return -1
         }
+    }
+
+    /// 响应 libarchive 的随机访问请求 (7z 等格式读取尾部头信息)
+    func seek(offset: Int64, whence: Int32) -> Int64 {
+        let target: Int64
+        switch Int(whence) {
+        case 0: target = offset                                   // SEEK_SET
+        case 1: target = logicalPosition + offset                 // SEEK_CUR
+        case 2: target = Int64(source.totalSize) + offset         // SEEK_END
+        default: return -1
+        }
+        let result = source.seek(toOffset: off_t(target))
+        if result >= 0 {
+            logicalPosition = Int64(result)
+            return Int64(result)
+        }
+        return -1
     }
 
     deinit {
@@ -41,6 +60,17 @@ private func archiveReadCallback(
     guard let clientData = clientData else { return -1 }
     let context = Unmanaged<LibArchiveReadContext>.fromOpaque(clientData).takeUnretainedValue()
     return context.readNextChunk(into: buffer)
+}
+
+private func archiveSeekCallback(
+    _ archive: OpaquePointer?,
+    _ clientData: UnsafeMutableRawPointer?,
+    _ offset: Int64,
+    _ whence: Int32
+) -> Int64 {
+    guard let clientData = clientData else { return -1 }
+    let context = Unmanaged<LibArchiveReadContext>.fromOpaque(clientData).takeUnretainedValue()
+    return context.seek(offset: offset, whence: whence)
 }
 
 private func archiveCloseCallback(
@@ -89,6 +119,10 @@ public final class LibArchiveExtractor: Extractor, @unchecked Sendable {
         archive_read_set_callback_data(archive, contextPtr)
         archive_read_set_read_callback(archive, archiveReadCallback)
         archive_read_set_close_callback(archive, archiveCloseCallback)
+        // 7z 等尾部头信息格式需要随机访问; 流式格式 (zip/tar/gzip) 不注册以保持纯前向打洞
+        if source.supportsRandomAccess {
+            archive_read_set_seek_callback(archive, archiveSeekCallback)
+        }
 
         let openStatus = archive_read_open1(archive)
         guard openStatus == ARCHIVE_OK else {

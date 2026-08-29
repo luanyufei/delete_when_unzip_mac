@@ -3,9 +3,18 @@ import Foundation
 public protocol StreamDataSource: AnyObject {
     var totalSize: UInt64 { get }
     var consumedBytes: UInt64 { get }
+    /// 是否支持随机访问寻址 (7z 等尾部头信息格式需要)
+    var supportsRandomAccess: Bool { get }
     func read(into buffer: UnsafeMutablePointer<UInt8>, maxLength: Int) throws -> Int
+    /// 寻址到指定逻辑偏移，返回新偏移；失败返回 -1
+    func seek(toOffset: off_t) -> off_t
     func close()
     func finalizeAndRemove()
+}
+
+public extension StreamDataSource {
+    var supportsRandomAccess: Bool { false }
+    func seek(toOffset: off_t) -> off_t { -1 }
 }
 
 public final class ChunkReader: StreamDataSource {
@@ -77,8 +86,11 @@ public final class ChunkReader: StreamDataSource {
         }
 
         if bytesRead == 0 {
-            // 到达文件末尾，清理并删除原文件
-            finalizeAndRemove()
+            // 顺序策略下读到 0 字节即真实 EOF; 随机访问策略 (.none/7z) 会探测性读取
+            // 文件末尾，此处严禁销毁源文件 —— 成功结束时由 extractor 统一 finalizeAndRemove
+            if strategy != .none {
+                finalizeAndRemove()
+            }
         }
 
         return bytesRead
@@ -92,6 +104,17 @@ public final class ChunkReader: StreamDataSource {
             fileHandle = nil
         }
         fd = -1
+    }
+
+    /// 仅 .none 策略 (7z 等需随机访问的格式) 支持寻址:
+    /// 打洞与平移截断均已物理销毁已读数据，向后寻址必然读到空洞
+    public var supportsRandomAccess: Bool { strategy == .none }
+
+    public func seek(toOffset target: off_t) -> off_t {
+        guard supportsRandomAccess, !isClosed, fd >= 0,
+              target >= 0, target <= off_t(totalSize) else { return -1 }
+        readOffset = target
+        return target
     }
 
     public func finalizeAndRemove() {

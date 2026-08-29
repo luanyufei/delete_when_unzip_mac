@@ -83,8 +83,10 @@ public final class ExtractionEngine: ObservableObject {
             let engine = self
             do {
                 switch info.type {
-                case .single:
-                    let reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes)
+                case .single(let format):
+                    // 7z 头信息位于尾部，必须随机访问读取，不能边读边打洞
+                    let strategy: ReclaimStrategy? = (format == .sevenZip) ? ReclaimStrategy.none : nil
+                    let reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes, strategy: strategy)
                     let extractor = LibArchiveExtractor()
                     try await extractor.extract(
                         source: reader,
@@ -112,7 +114,11 @@ public final class ExtractionEngine: ObservableObject {
                                 }
                             }
                         } else {
-                            let chainReader = try VolumeChainReader(volumes: info.volumeURLs, chunkSize: chunkSizeBytes)
+                            let chainReader = try VolumeChainReader(
+                                volumes: info.volumeURLs,
+                                chunkSize: chunkSizeBytes,
+                                deletesVolumesAsRead: format != .sevenZip
+                            )
                             let extractor = LibArchiveExtractor()
                             try await extractor.extract(
                                 source: chainReader,
@@ -126,7 +132,11 @@ public final class ExtractionEngine: ObservableObject {
                         }
                     } else {
                         // 分卷 ZIP / TAR 等使用 libarchive 链式流逐卷解压并删除
-                        let chainReader = try VolumeChainReader(volumes: info.volumeURLs, chunkSize: chunkSizeBytes)
+                        let chainReader = try VolumeChainReader(
+                            volumes: info.volumeURLs,
+                            chunkSize: chunkSizeBytes,
+                            deletesVolumesAsRead: format != .sevenZip
+                        )
                         let extractor = LibArchiveExtractor()
                         try await extractor.extract(
                             source: chainReader,
