@@ -7,7 +7,7 @@
 **The macOS-native archiver that deletes archives while unzipping — APFS hole punching, zero SSD wear**
 
 [![macOS](https://img.shields.io/badge/macOS-13.0%2B-blue.svg?style=flat-square&logo=apple)](https://www.apple.com/macos/)
-[![Apple Silicon](https://img.shields.io/badge/Arch-Apple%20Silicon%20%7C%20Intel-orange.svg?style=flat-square)](https://www.apple.com/mac/)
+[![Apple Silicon](https://img.shields.io/badge/Arch-Apple%20Silicon%20only-orange.svg?style=flat-square)](https://www.apple.com/mac/)
 [![Swift](https://img.shields.io/badge/Swift-5.9%20%2F%206.0-F05138.svg?style=flat-square&logo=swift)](https://swift.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg?style=flat-square)](LICENSE)
 
@@ -29,7 +29,7 @@ The original Python project solves this on Windows by progressively truncating c
 
 ## The macOS Native Solution
 
-**DeleteWhenUnzipMac** is a ground-up rewrite in pure Swift and SwiftUI tailored specifically for Apple Silicon and Intel Macs:
+**DeleteWhenUnzipMac** is a ground-up rewrite in pure Swift and SwiftUI tailored specifically for Apple Silicon Macs. Intel Macs are not supported:
 
 - **APFS File Hole Punching (`F_PUNCHHOLE`)**: Instead of copying bytes forward on disk, we issue native XNU kernel `fcntl(fd, F_PUNCHHOLE, ...)` calls to deallocate underlying physical blocks in $O(1)$ time. This frees up disk space immediately with **zero extra disk writes and zero SSD wear**.
 - **Unified Engine**: Powered directly by `libarchive` via a native C bridge, handling ZIP, RAR, TAR, GZIP, and 7-Zip in a single binary.
@@ -65,6 +65,7 @@ dwum update
 ### 2. Building from Source (GUI App & CLI)
 
 #### Prerequisites
+- Apple Silicon Mac (arm64). Intel Macs are not supported.
 - macOS 13.0 (Ventura) or later
 - Xcode Command Line Tools (`xcode-select --install`)
 - `libarchive` headers: `brew install libarchive`
