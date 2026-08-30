@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import DeleteWhenUnzipCore
 
@@ -102,6 +103,48 @@ struct DeleteWhenUnzipCLI {
             print("❌ 格式检测失败: \(error.localizedDescription)")
             exit(1)
         }
+        guard info.type.format != .other else {
+            print("❌ 无法识别的压缩格式。支持 ZIP / RAR / 7Z / TAR / GZIP 及常见分卷。")
+            exit(1)
+        }
+
+        // 加密预探测: 只读检查，避免破坏性解压开始后才发现需要密码（届时源文件已被打洞破坏）
+        var preferUnrar = false
+        let probeResult = LibArchiveExtractor.probeEncryption(volumeURLs: info.volumeURLs, password: password)
+        switch probeResult {
+        case .passwordRequired where password == nil:
+            print("🔒 该压缩包已加密。")
+            guard let input = promptPassword("请输入解压密码:"), !input.isEmpty else {
+                print("❌ 未输入密码，已取消。")
+                exit(1)
+            }
+            password = input
+        case .decoderUnsupported:
+            if info.type.format == .rar {
+                guard UnRARProcess.findUnRAR() != nil else {
+                    print("❌ 该压缩包使用 libarchive 不支持的 RAR5 加密格式。")
+                    print("   请先安装 unrar: brew install --cask rar")
+                    exit(1)
+                }
+                preferUnrar = true
+                if password == nil {
+                    print("🔒 该压缩包已加密（通过 unrar 解密）。")
+                    guard let input = promptPassword("请输入解压密码:"), !input.isEmpty else {
+                        print("❌ 未输入密码，已取消。")
+                        exit(1)
+                    }
+                    password = input
+                }
+            } else {
+                print("❌ \(ExtractionError.encryptedDecoderUnsupported(formatName: info.type.format.rawValue).localizedDescription)")
+                exit(1)
+            }
+        case .unknown where info.type.format == .rar && UnRARProcess.findUnRAR() != nil:
+            // libarchive 对该 RAR 无把握 (罕见压缩方法等)，交给能力更完整的 unrar
+            preferUnrar = true
+        default:
+            break
+        }
 
         print("📦 识别格式: \(info.type.displayName)")
         print("📁 目标解压目录: \(info.outputDirectoryURL.path)")
@@ -125,31 +168,52 @@ struct DeleteWhenUnzipCLI {
         let chunkSizeBytes = chunkSizeMB * 1024 * 1024
 
         do {
-            switch info.type {
-            case .single(let format):
-                // 7z 头信息位于尾部，必须随机访问读取，不能边读边打洞
-                let strategy: ReclaimStrategy? = (format == .sevenZip) ? ReclaimStrategy.none : nil
-                let reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes, strategy: strategy)
-                let extractor = LibArchiveExtractor()
-                try await extractor.extract(
-                    source: reader,
-                    to: info.outputDirectoryURL,
+            let unrarAvailable = UnRARProcess.findUnRAR() != nil
+
+            func runUnrar(volumes: [URL]) async throws {
+                let unrar = UnRARProcess()
+                try await unrar.extractAndDelete(
+                    mainVolume: info.mainVolumeURL,
+                    volumes: volumes,
+                    outputDirectory: info.outputDirectoryURL,
                     password: password
                 ) { progress in
                     renderProgress(progress: progress)
                 }
+            }
 
-            case .multiVolume(let format):
-                if format == .rar && UnRARProcess.findUnRAR() != nil {
-                    let unrar = UnRARProcess()
-                    try await unrar.extractAndDelete(
-                        mainVolume: info.mainVolumeURL,
-                        volumes: info.volumeURLs,
-                        outputDirectory: info.outputDirectoryURL,
+            switch info.type {
+            case .single(let format):
+                if format == .rar && preferUnrar {
+                    try await runUnrar(volumes: [info.mainVolumeURL])
+                } else {
+                    let reader: ChunkReader
+                    if format == .sevenZip {
+                        // 7z 头信息位于尾部需要随机访问: APFS 上延迟到头部解析完成后打洞，
+                        // 兼顾空间回收与随机读；非 APFS 无打洞可用，退回整体删除模式
+                        if SpaceReclaimer.detectStrategy(for: info.mainVolumeURL) == .punchHole {
+                            reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes,
+                                                     strategy: .punchHole, punchAfterSeek: true)
+                        } else {
+                            reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes,
+                                                     strategy: ReclaimStrategy.none)
+                        }
+                    } else {
+                        reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes)
+                    }
+                    let extractor = LibArchiveExtractor()
+                    try await extractor.extract(
+                        source: reader,
+                        to: info.outputDirectoryURL,
                         password: password
                     ) { progress in
                         renderProgress(progress: progress)
                     }
+                }
+
+            case .multiVolume(let format):
+                if format == .rar && (preferUnrar || unrarAvailable) {
+                    try await runUnrar(volumes: info.volumeURLs)
                 } else {
                     let chainReader = try VolumeChainReader(
                         volumes: info.volumeURLs,
@@ -302,6 +366,36 @@ struct DeleteWhenUnzipCLI {
         return true
     }
 
+    /// 终端交互时关闭回显读取密码；管道等非交互场景直接读取一行
+    private static func promptPassword(_ prompt: String) -> String? {
+        print("\(prompt) ", terminator: "")
+        let original = isInteractiveTTY() ? disableEcho() : nil
+        defer {
+            if let original { restoreEcho(original) }
+            if isInteractiveTTY() { print("") }
+        }
+        guard let line = readLine() else { return nil }
+        return line.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func isInteractiveTTY() -> Bool {
+        isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1
+    }
+
+    private static func disableEcho() -> termios {
+        var state = termios()
+        tcgetattr(STDIN_FILENO, &state)
+        var noEcho = state
+        noEcho.c_lflag &= ~tcflag_t(ECHO)
+        tcsetattr(STDIN_FILENO, TCSANOW, &noEcho)
+        return state
+    }
+
+    private static func restoreEcho(_ state: termios) {
+        var restored = state
+        tcsetattr(STDIN_FILENO, TCSANOW, &restored)
+    }
+
     private static func upgradeViaHomebrew() async {
         print("🍺 检测到当前通过 Homebrew 安装，正在执行 brew upgrade...")
         let status = await runProcess("/usr/bin/env", ["brew", "upgrade", "dwum"],
@@ -341,6 +435,19 @@ struct DeleteWhenUnzipCLI {
                 print("❌ 下载失败 (HTTP \(httpResponse.statusCode))。")
                 try? fm.removeItem(at: tmpDir)
                 return
+            }
+
+            // 校验和验证: 发布资产附带 .sha256 sidecar，存在则强制比对
+            if let expected = await fetchSidecarChecksum(downloadURL) {
+                let actual = try sha256Hex(of: archiveURL)
+                guard actual == expected else {
+                    print("❌ 校验和不匹配，已中止更新 (期望 \(expected.prefix(16))…, 实际 \(actual.prefix(16))…)。")
+                    try? fm.removeItem(at: tmpDir)
+                    return
+                }
+                print("🔐 SHA-256 校验通过。")
+            } else {
+                print("⚠️ 该版本未提供校验和文件，跳过完整性校验。")
             }
 
             print("📦 正在解压并校验...")
@@ -397,6 +504,31 @@ struct DeleteWhenUnzipCLI {
     private enum ProcessStdin {
         case inherit
         case nullDevice
+    }
+
+    /// 获取发布资产对应的 .sha256 sidecar 内容 (小写十六进制)
+    private static func fetchSidecarChecksum(_ assetURL: URL) async -> String? {
+        guard var components = URLComponents(url: assetURL, resolvingAgainstBaseURL: false) else { return nil }
+        components.path += ".sha256"
+        guard let sidecarURL = components.url else { return nil }
+        var request = URLRequest(url: sidecarURL)
+        request.timeoutInterval = 15
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
+            let text = String(data: data, encoding: .utf8) ?? ""
+            // 常见格式: "<hex>  <filename>"
+            guard let token = text.split(separator: "\n").first?.split(separator: " ").first else { return nil }
+            let hex = String(token).lowercased()
+            return hex.count == 64 && hex.allSatisfy({ $0.isHexDigit }) ? hex : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private static func sha256Hex(of fileURL: URL) throws -> String {
+        let data = try Data(contentsOf: fileURL)
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     /// 运行外部进程。stdin 默认连接 /dev/null: 子进程无法读取终端，
