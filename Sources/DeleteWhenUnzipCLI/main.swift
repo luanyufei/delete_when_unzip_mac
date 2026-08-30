@@ -5,7 +5,7 @@ import DeleteWhenUnzipCore
 @main
 struct DeleteWhenUnzipCLI {
 
-    static let version = "0.1.6"
+    static let version = "0.2.0"
     static let repoBase = "https://github.com/luanyufei/delete_when_unzip_mac"
     static let repoAPIBase = "https://api.github.com/repos/luanyufei/delete_when_unzip_mac"
 
