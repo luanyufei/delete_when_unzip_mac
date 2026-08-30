@@ -9,6 +9,8 @@ public final class DropZoneViewModel: ObservableObject {
 public struct DropZoneView: View {
     let onFileSelected: (URL) -> Void
     @StateObject private var vm = DropZoneViewModel()
+    @ObservedObject private var l10n = LocalizationManager.shared
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(onFileSelected: @escaping (URL) -> Void) {
         self.onFileSelected = onFileSelected
@@ -28,12 +30,12 @@ public struct DropZoneView: View {
                     .animation(.spring(response: 0.3, dampingFraction: 0.6), value: vm.isTargeted)
 
                 VStack(spacing: 8) {
-                    Text(vm.isTargeted ? "松开即可开始分析" : "拖入压缩包，边解压边释放空间")
+                    Text(vm.isTargeted ? l10n.t("drop_title_targeted") : l10n.t("drop_title"))
                         .font(.title2)
                         .fontWeight(.bold)
                         .animation(.easeInOut(duration: 0.15), value: vm.isTargeted)
 
-                    Text("单文件与多分卷: ZIP · RAR · 7Z · TAR · GZIP · .part1.rar · .z01 · .7z.001")
+                    Text(l10n.t("drop_formats"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -41,7 +43,7 @@ public struct DropZoneView: View {
                 Button {
                     chooseFile()
                 } label: {
-                    Label("选取文件…", systemImage: "folder.badge.plus")
+                    Label(l10n.t("choose_file"), systemImage: "folder.badge.plus")
                         .padding(.horizontal, 10)
                 }
                 .buttonStyle(.borderedProminent)
@@ -52,7 +54,9 @@ public struct DropZoneView: View {
             .frame(maxWidth: .infinity, maxHeight: 340)
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(vm.isTargeted ? Color.accentColor.opacity(0.1) : Color(nsColor: .controlBackgroundColor).opacity(0.55))
+                    .fill(
+                        vm.isTargeted ? Color.accentColor.opacity(0.12) : Color(NSColor.controlBackgroundColor).opacity(0.6)
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -64,11 +68,6 @@ public struct DropZoneView: View {
             .animation(.easeInOut(duration: 0.2), value: vm.isTargeted)
 
             Spacer()
-
-            Label("解压过程中原压缩包将被逐步删除，磁盘空间实时回收", systemImage: "shield.checkerboard")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 8)
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard let first = urls.first else { return false }
@@ -84,8 +83,7 @@ public struct DropZoneView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "选择压缩包"
-        panel.message = "请选择主压缩文件或首个分卷文件"
+        panel.prompt = l10n.t("choose_file")
 
         if panel.runModal() == .OK, let url = panel.url {
             onFileSelected(url)

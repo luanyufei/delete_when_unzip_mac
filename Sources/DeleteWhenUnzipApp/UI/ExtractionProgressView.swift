@@ -15,6 +15,7 @@ public struct ExtractionProgressView: View {
     let onCancel: () -> Void
 
     @StateObject private var vm = ProgressViewModel()
+    @ObservedObject private var l10n = LocalizationManager.shared
 
     public init(
         progress: Double,
@@ -37,7 +38,7 @@ public struct ExtractionProgressView: View {
     public var body: some View {
         VStack(spacing: 24) {
             VStack(spacing: 6) {
-                Text("正在流式解压并释放空间")
+                Text(l10n.t("extracting_title"))
                     .font(.title2)
                     .fontWeight(.bold)
 
@@ -59,37 +60,31 @@ public struct ExtractionProgressView: View {
                 .tint(.accentColor)
 
             HStack(spacing: 28) {
-                StatItem(title: "已处理 / 总大小", value: "\(processedSize) / \(totalSize)", icon: "internaldrive")
-                StatItem(title: "实时解压速度", value: speed, icon: "speedometer")
+                StatItem(title: "\(l10n.t("processed")) / \(l10n.t("total_size"))", value: "\(processedSize) / \(totalSize)", icon: "internaldrive")
+                StatItem(title: l10n.t("speed"), value: speed, icon: "speedometer")
                 if !availableDiskSpace.isEmpty {
-                    StatItem(title: "磁盘剩余", value: availableDiskSpace, icon: "opticaldiscdrive")
+                    StatItem(title: l10n.t("disk_free"), value: availableDiskSpace, icon: "opticaldiscdrive")
                 }
             }
             .padding(16)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+            .background(Color(nsColor: .controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             Spacer()
 
             HStack {
-                Text("中途强行终止可能导致压缩文件损坏且解压不完整")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
                 Spacer()
 
-                Button("中止解压", role: .destructive) {
+                Button(l10n.t("cancel_extraction"), role: .destructive) {
                     vm.showingCancelConfirm = true
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                .confirmationDialog("确定要中止解压吗？", isPresented: $vm.showingCancelConfirm) {
-                    Button("确认中止（源文件已部分损坏）", role: .destructive) {
+                .confirmationDialog(l10n.t("cancel_extraction"), isPresented: $vm.showingCancelConfirm) {
+                    Button(l10n.t("cancel_extraction"), role: .destructive) {
                         onCancel()
                     }
-                    Button("继续解压", role: .cancel) {}
-                } message: {
-                    Text("当前已解压部分已被删除，中止将导致压缩文件不完整且无法继续解压。")
+                    Button(l10n.t("cancel"), role: .cancel) {}
                 }
             }
         }

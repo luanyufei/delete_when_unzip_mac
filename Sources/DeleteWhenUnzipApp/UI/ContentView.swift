@@ -4,6 +4,7 @@ import DeleteWhenUnzipCore
 
 public struct ContentView: View {
     @StateObject private var engine = ExtractionEngine()
+    @ObservedObject private var l10n = LocalizationManager.shared
     @AppStorage("autoRevealInFinder") private var autoRevealInFinder: Bool = true
     @AppStorage("showDestructiveWarning") private var showDestructiveWarning: Bool = true
     @AppStorage("defaultChunkSizeMB") private var defaultChunkSizeMB: Int = 10
@@ -24,7 +25,7 @@ public struct ContentView: View {
                     VStack(spacing: 20) {
                         ProgressView()
                             .controlSize(.large)
-                        Text("正在分析压缩包结构与分卷信息...")
+                        Text(l10n.t("analyzing"))
                             .font(.title3)
                             .foregroundStyle(.secondary)
                     }
@@ -43,7 +44,6 @@ public struct ContentView: View {
                             }
                         )
                     } else {
-                        // 用户已在设置中关闭确认页: 直接开始
                         Color.clear
                             .onAppear {
                                 engine.startExtraction(info: info, password: nil, chunkSizeMB: defaultChunkSizeMB)
@@ -89,18 +89,18 @@ public struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("DeleteWhenUnzipMac")
+            .navigationTitle(l10n.t("app_name"))
             .toolbar {
                 ToolbarItem(placement: .status) {
                     if !engine.availableDiskSpaceFormatted.isEmpty {
-                        Label("磁盘剩余 \(engine.availableDiskSpaceFormatted)", systemImage: "internaldrive")
+                        Label("\(l10n.t("disk_free")) \(engine.availableDiskSpaceFormatted)", systemImage: "internaldrive")
                             .font(.callout)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(.quinary, in: Capsule())
-                            .help("当前磁盘可用空间")
+                            .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+                            .help(l10n.t("disk_free"))
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -108,7 +108,7 @@ public struct ContentView: View {
                 }
             }
         }
-        .frame(minWidth: 660, minHeight: 560)
+        .frame(minWidth: 480, minHeight: 540)
         .onReceive(NotificationCenter.default.publisher(for: .openFileNotification)) { notification in
             if let url = notification.object as? URL {
                 engine.analyze(fileURL: url)
@@ -116,21 +116,20 @@ public struct ContentView: View {
         }
     }
 
-    /// 偏好设置入口: 优先使用系统 Settings 窗口 (自带关闭按钮)
     @ViewBuilder
     private var openSettingsButton: some View {
         if #available(macOS 14.0, *) {
             SettingsLink {
                 Image(systemName: "gearshape")
             }
-            .help("偏好设置")
+            .help(l10n.t("tab_general"))
         } else {
             Button {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             } label: {
                 Image(systemName: "gearshape")
             }
-            .help("偏好设置")
+            .help(l10n.t("tab_general"))
         }
     }
 }
@@ -139,6 +138,7 @@ public struct ContentView: View {
 private struct CompletedView: View {
     let outputURL: URL
     let onDone: () -> Void
+    @ObservedObject private var l10n = LocalizationManager.shared
 
     var body: some View {
         VStack(spacing: 24) {
@@ -147,11 +147,11 @@ private struct CompletedView: View {
                 .foregroundStyle(.green)
 
             VStack(spacing: 8) {
-                Text("解压已顺利完成！")
+                Text(l10n.t("completed_title"))
                     .font(.title)
                     .fontWeight(.bold)
 
-                Text("原始压缩文件已全部删除，目标文件已保存至：")
+                Text(l10n.t("completed_desc"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -168,7 +168,7 @@ private struct CompletedView: View {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([outputURL])
                 } label: {
-                    Label("在访达中显示", systemImage: "folder")
+                    Label(l10n.t("reveal_in_finder"), systemImage: "folder")
                         .padding(.horizontal, 6)
                 }
                 .buttonStyle(.bordered)
@@ -177,7 +177,7 @@ private struct CompletedView: View {
                 Button {
                     onDone()
                 } label: {
-                    Text("完成")
+                    Text(l10n.t("done"))
                         .fontWeight(.semibold)
                         .padding(.horizontal, 14)
                 }
@@ -193,6 +193,7 @@ private struct CompletedView: View {
 private struct ErrorView: View {
     let error: ExtractionError
     let onBack: () -> Void
+    @ObservedObject private var l10n = LocalizationManager.shared
 
     var body: some View {
         VStack(spacing: 20) {
@@ -200,7 +201,7 @@ private struct ErrorView: View {
                 .font(.system(size: 72))
                 .foregroundStyle(.red)
 
-            Text("解压遇到问题")
+            Text(l10n.t("failed_title"))
                 .font(.title)
                 .fontWeight(.bold)
 
@@ -211,7 +212,7 @@ private struct ErrorView: View {
                 .padding(.horizontal, 32)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("返回重试") {
+            Button(l10n.t("back")) {
                 onBack()
             }
             .buttonStyle(.borderedProminent)
@@ -225,6 +226,7 @@ private struct ErrorView: View {
 // 中止页面
 private struct CancelledView: View {
     let onBack: () -> Void
+    @ObservedObject private var l10n = LocalizationManager.shared
 
     var body: some View {
         VStack(spacing: 20) {
@@ -232,15 +234,11 @@ private struct CancelledView: View {
                 .font(.system(size: 72))
                 .foregroundStyle(.orange)
 
-            Text("解压已被中止")
+            Text(l10n.t("cancelled_title"))
                 .font(.title)
                 .fontWeight(.bold)
 
-            Text("注意：已解压的部分压缩数据可能已被销毁。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            Button("返回主页") {
+            Button(l10n.t("back")) {
                 onBack()
             }
             .buttonStyle(.bordered)

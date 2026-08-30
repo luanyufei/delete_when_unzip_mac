@@ -17,12 +17,16 @@ Icon
 
 # Excluded project documents & temp files
 agents.md
+AGENTS.md
 plan.md
 SKILL.md
 skill.md
 app_icon.png
 
-# Binaries
+# Binaries & Release Artifacts
+*.dmg
+*.tar.gz
+*.sha256
 *.exe
 unrar.exe
 

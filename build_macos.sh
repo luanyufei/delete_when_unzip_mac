@@ -72,10 +72,15 @@ mkdir -p "$APP_DIR/Contents/Frameworks"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 cp "$BIN_DIR/DeleteWhenUnzipMac" "$APP_DIR/Contents/MacOS/"
+cp "$BIN_DIR/dwum" "$APP_DIR/Contents/Resources/"
 cp "$ROOT_DIR/Info.plist" "$APP_DIR/Contents/"
 
 if [ -f "$ROOT_DIR/AppIcon.icns" ]; then
     cp "$ROOT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+fi
+
+if [ -f "$ROOT_DIR/Sources/DeleteWhenUnzipApp/AuthorAvatar.png" ]; then
+    cp "$ROOT_DIR/Sources/DeleteWhenUnzipApp/AuthorAvatar.png" "$APP_DIR/Contents/Resources/"
 fi
 
 echo "APPL????" > "$APP_DIR/Contents/PkgInfo"

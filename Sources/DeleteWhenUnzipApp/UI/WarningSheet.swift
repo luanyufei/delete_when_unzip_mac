@@ -14,6 +14,7 @@ public struct WarningSheet: View {
     let onCancel: () -> Void
 
     @StateObject private var vm = WarningSheetViewModel()
+    @ObservedObject private var l10n = LocalizationManager.shared
     @AppStorage("defaultChunkSizeMB") private var chunkSizeMB: Int = 10
 
     public init(
@@ -36,11 +37,11 @@ public struct WarningSheet: View {
                     .foregroundStyle(.orange)
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("确认边解压边删除")
+                    Text(l10n.t("warning_title"))
                         .font(.title2)
                         .fontWeight(.bold)
 
-                    Text("解压过程中原始压缩包将被逐步物理销毁，不可撤销。")
+                    Text(l10n.t("warning_desc"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -58,7 +59,7 @@ public struct WarningSheet: View {
                 InfoRow(label: "解压目标", value: info.outputDirectoryURL.path, icon: "folder")
             }
             .padding(16)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.7))
+            .background(Color(nsColor: .controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             // 密码与高级设置
@@ -68,27 +69,28 @@ public struct WarningSheet: View {
                         Image(systemName: "lock.fill")
                             .font(.callout)
                             .foregroundStyle(.orange)
-                        Text("检测到该压缩包已加密，必须提供密码后才能解压")
+                        Text(l10n.t("password_optional"))
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
-                    SecureField("解压密码", text: $vm.password)
+                    SecureField(l10n.t("password_placeholder"), text: $vm.password)
                         .textFieldStyle(.roundedBorder)
                         .font(.body)
                         .onAppear { vm.hasPassword = true }
                 } else {
-                    Toggle("压缩包包含密码 (Encrypted)", isOn: $vm.hasPassword.animation())
+                    Toggle(l10n.t("password_optional"), isOn: $vm.hasPassword.animation())
                         .font(.body)
+                        .toggleStyle(.switch)
 
                     if vm.hasPassword {
-                        SecureField("输入解压密码", text: $vm.password)
+                        SecureField(l10n.t("password_placeholder"), text: $vm.password)
                             .textFieldStyle(.roundedBorder)
                             .font(.body)
                     }
                 }
 
                 HStack {
-                    Text("处理块大小 (Chunk Size):")
+                    Text("\(l10n.t("chunk_size")):")
                         .font(.body)
                     Spacer()
                     Stepper("\(chunkSizeMB) MB", value: $chunkSizeMB, in: 1...2048, step: 5)
@@ -99,7 +101,7 @@ public struct WarningSheet: View {
             Spacer()
 
             HStack {
-                Button("取消 (Cancel)", role: .cancel) {
+                Button(l10n.t("cancel"), role: .cancel) {
                     onCancel()
                 }
                 .controlSize(.large)
@@ -111,7 +113,7 @@ public struct WarningSheet: View {
                     let pwd = vm.hasPassword && !vm.password.isEmpty ? vm.password : nil
                     onConfirm(pwd, chunkSizeMB)
                 } label: {
-                    Label("我已知晓风险，开始解压", systemImage: "bolt.fill")
+                    Label(l10n.t("start_extraction"), systemImage: "bolt.fill")
                         .fontWeight(.semibold)
                         .padding(.horizontal, 8)
                 }
