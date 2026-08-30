@@ -16,8 +16,6 @@
 </div>
 
 > **Notice**: This project is a macOS-native Swift rewrite inspired by and based on [auto-Dog/delete_when_unzip](https://github.com/auto-Dog/delete_when_unzip).
-> 
-> ⚠️ **Early Development Stage**: DeleteWhenUnzipMac is currently in active early development. Official prebuilt releases (`.dmg` / `.app`) will be available within a few weeks. If you want to try it today, follow the build instructions below to compile from source.
 
 ---
 
@@ -41,7 +39,15 @@ The original Python project solves this on Windows by progressively truncating c
 
 ## Installation & Quick Start
 
-### 1. Homebrew (CLI Installation)
+### 1. Desktop App (macOS DMG)
+
+Download the latest prebuilt `DeleteWhenUnzipMac-0.2.0.dmg` directly from [GitHub Releases](https://github.com/luanyufei/delete_when_unzip_mac/releases/latest).
+
+Open the DMG and drag **DeleteWhenUnzipMac.app** into your **Applications** folder.
+
+---
+
+### 2. Homebrew (CLI Installation)
 
 Install the standalone `dwum` command with a single line:
 
@@ -62,7 +68,7 @@ dwum update
 
 ---
 
-### 2. Building from Source (GUI App & CLI)
+### 3. Building from Source (GUI App & CLI)
 
 #### Prerequisites
 - Apple Silicon Mac (arm64). Intel Macs are not supported.
