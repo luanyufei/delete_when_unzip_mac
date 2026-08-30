@@ -15,47 +15,60 @@ public struct DropZoneView: View {
     }
 
     public var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(
-                    vm.isTargeted ? Color.accentColor : Color.secondary.opacity(0.3),
-                    style: StrokeStyle(lineWidth: vm.isTargeted ? 3 : 2, dash: vm.isTargeted ? [10] : [6])
-                )
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(vm.isTargeted ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor).opacity(0.5))
-                )
-                .animation(.easeInOut(duration: 0.2), value: vm.isTargeted)
+        VStack(spacing: 0) {
+            Spacer()
 
-            VStack(spacing: 16) {
-                Image(systemName: "arrow.down.doc.fill")
-                    .font(.system(size: 48, weight: .light))
-                    .foregroundStyle(vm.isTargeted ? Color.accentColor : Color.secondary)
-                    .scaleEffect(vm.isTargeted ? 1.1 : 1.0)
+            VStack(spacing: 24) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 128, height: 128)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+                    .scaleEffect(vm.isTargeted ? 1.06 : 1.0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.6), value: vm.isTargeted)
 
-                VStack(spacing: 6) {
-                    Text("拖拽压缩文件到此处")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+                VStack(spacing: 8) {
+                    Text(vm.isTargeted ? "松开即可开始分析" : "拖入压缩包，边解压边释放空间")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .animation(.easeInOut(duration: 0.15), value: vm.isTargeted)
 
-                    Text("支持单文件及多分卷 (.zip, .rar, .z01, .part1.rar, .7z.001)")
-                        .font(.caption)
+                    Text("单文件与多分卷: ZIP · RAR · 7Z · TAR · GZIP · .part1.rar · .z01 · .7z.001")
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
 
                 Button {
                     chooseFile()
                 } label: {
-                    Label("浏览文件 (Choose File)", systemImage: "folder.badge.plus")
-                        .padding(.horizontal, 8)
+                    Label("选取文件…", systemImage: "folder.badge.plus")
+                        .padding(.horizontal, 10)
                 }
                 .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+                .controlSize(.large)
             }
-            .padding(24)
+            .padding(40)
+            .frame(maxWidth: .infinity, maxHeight: 340)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(vm.isTargeted ? Color.accentColor.opacity(0.1) : Color(nsColor: .controlBackgroundColor).opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(
+                        vm.isTargeted ? Color.accentColor : Color.secondary.opacity(0.25),
+                        style: StrokeStyle(lineWidth: vm.isTargeted ? 3 : 2, dash: vm.isTargeted ? [] : [8])
+                    )
+            )
+            .animation(.easeInOut(duration: 0.2), value: vm.isTargeted)
+
+            Spacer()
+
+            Label("解压过程中原压缩包将被逐步删除，磁盘空间实时回收", systemImage: "shield.checkerboard")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 8)
         }
-        .frame(minHeight: 220)
         .dropDestination(for: URL.self) { urls, _ in
             guard let first = urls.first else { return false }
             onFileSelected(first)

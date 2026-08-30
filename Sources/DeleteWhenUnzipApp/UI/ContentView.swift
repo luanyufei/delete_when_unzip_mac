@@ -11,48 +11,50 @@ public struct ContentView: View {
     @StateObject private var engine = ExtractionEngine()
     @StateObject private var vm = ContentViewModel()
     @AppStorage("autoRevealInFinder") private var autoRevealInFinder: Bool = true
+    @AppStorage("showDestructiveWarning") private var showDestructiveWarning: Bool = true
+    @AppStorage("defaultChunkSizeMB") private var defaultChunkSizeMB: Int = 10
 
     public init() {}
 
     public var body: some View {
-        VStack(spacing: 0) {
-            // 顶栏
-            HeaderView(engine: engine, onOpenSettings: { vm.showingSettings = true })
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
-
-            Divider()
-
-            // 主视图状态路由
+        NavigationStack {
             ZStack {
                 switch engine.state {
                 case .idle:
                     DropZoneView { fileURL in
                         engine.analyze(fileURL: fileURL)
                     }
-                    .padding(20)
+                    .padding(28)
 
                 case .analyzing:
-                    VStack(spacing: 16) {
+                    VStack(spacing: 20) {
                         ProgressView()
-                            .scaleEffect(1.2)
+                            .controlSize(.large)
                         Text("正在分析压缩包结构与分卷信息...")
-                            .font(.subheadline)
+                            .font(.title3)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 case .ready(let info):
-                    WarningSheet(
-                        info: info,
-                        onConfirm: { password, chunkSizeMB in
-                            engine.startExtraction(info: info, password: password, chunkSizeMB: chunkSizeMB)
-                        },
-                        onCancel: {
-                            engine.reset()
-                        }
-                    )
+                    if showDestructiveWarning {
+                        WarningSheet(
+                            info: info,
+                            requiresPassword: engine.requiresPassword,
+                            onConfirm: { password, chunkSizeMB in
+                                engine.startExtraction(info: info, password: password, chunkSizeMB: chunkSizeMB)
+                            },
+                            onCancel: {
+                                engine.reset()
+                            }
+                        )
+                    } else {
+                        // 用户已在设置中关闭确认页: 直接开始
+                        Color.clear
+                            .onAppear {
+                                engine.startExtraction(info: info, password: nil, chunkSizeMB: defaultChunkSizeMB)
+                            }
+                    }
 
                 case .extracting(let progress, let fileName, let processed, let total, let speed):
                     ExtractionProgressView(
@@ -66,13 +68,13 @@ public struct ContentView: View {
                             engine.cancel()
                         }
                     )
-                    .padding(20)
+                    .padding(28)
 
                 case .completed(let outputURL):
                     CompletedView(outputURL: outputURL) {
                         engine.reset()
                     }
-                    .padding(20)
+                    .padding(28)
                     .onAppear {
                         if autoRevealInFinder {
                             NSWorkspace.shared.activateFileViewerSelecting([outputURL])
@@ -83,18 +85,41 @@ public struct ContentView: View {
                     ErrorView(error: error) {
                         engine.reset()
                     }
-                    .padding(20)
+                    .padding(28)
 
                 case .cancelled:
                     CancelledView {
                         engine.reset()
                     }
-                    .padding(20)
+                    .padding(28)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle("DeleteWhenUnzipMac")
+            .toolbar {
+                ToolbarItem(placement: .status) {
+                    if !engine.availableDiskSpaceFormatted.isEmpty {
+                        Label("磁盘剩余 \(engine.availableDiskSpaceFormatted)", systemImage: "internaldrive")
+                            .font(.callout)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.quinary, in: Capsule())
+                            .help("当前磁盘可用空间")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        vm.showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .help("偏好设置")
+                }
+            }
         }
-        .frame(minWidth: 560, minHeight: 460)
+        .frame(minWidth: 660, minHeight: 560)
         .sheet(isPresented: $vm.showingSettings) {
             SettingsView()
         }
@@ -106,101 +131,57 @@ public struct ContentView: View {
     }
 }
 
-// 头部状态栏
-private struct HeaderView: View {
-    @ObservedObject var engine: ExtractionEngine
-    let onOpenSettings: () -> Void
-
-    var body: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Image(systemName: "archivebox.fill")
-                        .foregroundStyle(.tint)
-                    Text("DeleteWhenUnzipMac")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                }
-                Text("边解压边删除 · APFS 物理打洞零写入损耗")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if !engine.availableDiskSpaceFormatted.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "internaldrive")
-                        .font(.caption)
-                    Text("磁盘剩余: \(engine.availableDiskSpaceFormatted)")
-                        .font(.caption)
-                        .monospacedDigit()
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(Capsule())
-            }
-
-            Button {
-                onOpenSettings()
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 14))
-            }
-            .buttonStyle(.plain)
-            .help("偏好设置")
-        }
-    }
-}
-
 // 完成页面
 private struct CompletedView: View {
     let outputURL: URL
     let onDone: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 64))
+                .font(.system(size: 84))
                 .foregroundStyle(.green)
 
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Text("解压已顺利完成！")
-                    .font(.title2)
+                    .font(.title)
                     .fontWeight(.bold)
 
                 Text("原始压缩文件已全部删除，目标文件已保存至：")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
-
-                Text(outputURL.path)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
             }
 
-            HStack(spacing: 12) {
+            Text(outputURL.path)
+                .font(.callout)
+                .fontWeight(.medium)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            HStack(spacing: 14) {
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([outputURL])
                 } label: {
                     Label("在访达中显示", systemImage: "folder")
+                        .padding(.horizontal, 6)
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
 
                 Button {
                     onDone()
                 } label: {
                     Text("完成")
                         .fontWeight(.semibold)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 14)
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -210,26 +191,30 @@ private struct ErrorView: View {
     let onBack: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Image(systemName: "xmark.octagon.fill")
-                .font(.system(size: 56))
+                .font(.system(size: 72))
                 .foregroundStyle(.red)
 
             Text("解压遇到问题")
-                .font(.title3)
+                .font(.title)
                 .fontWeight(.bold)
 
             Text(error.localizedDescription)
-                .font(.subheadline)
+                .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 32)
+                .fixedSize(horizontal: false, vertical: true)
 
-            Button("返回重试 (Back)") {
+            Button("返回重试") {
                 onBack()
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding(.top, 6)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -238,23 +223,26 @@ private struct CancelledView: View {
     let onBack: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 56))
+                .font(.system(size: 72))
                 .foregroundStyle(.orange)
 
             Text("解压已被中止")
-                .font(.title3)
+                .font(.title)
                 .fontWeight(.bold)
 
             Text("注意：已解压的部分压缩数据可能已被销毁。")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
 
             Button("返回主页") {
                 onBack()
             }
             .buttonStyle(.bordered)
+            .controlSize(.large)
+            .padding(.top, 6)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
