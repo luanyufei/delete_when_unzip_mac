@@ -1,5 +1,4 @@
 import Foundation
-import DeleteWhenUnzipCore
 
 @main
 struct VerificationRunner {
@@ -101,7 +100,7 @@ struct VerificationRunner {
         log("  ℹ️ Detected format: \(info.type.displayName), size: \(info.formattedTotalSize)")
 
         // 流式解压 + 删除
-        let reader = try! ChunkReader(fileURL: zipURL, chunkSize: 512)
+        let reader = try! ChunkReader.make(fileURL: zipURL, chunkSize: 512)
         let extractor = LibArchiveExtractor()
         var progressList: [Double] = []
 

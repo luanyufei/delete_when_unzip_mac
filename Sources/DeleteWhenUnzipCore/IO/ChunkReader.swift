@@ -57,6 +57,11 @@ public final class ChunkReader: StreamDataSource {
         strategy == .punchHole && (!punchAfterSeek || seekPhaseArmed)
     }
 
+    /// 供外部模块 (测试/工具) 使用的标准构造入口，避免跨模块默认参数符号问题
+    public static func make(fileURL: URL, chunkSize: Int) throws -> ChunkReader {
+        try ChunkReader(fileURL: fileURL, chunkSize: chunkSize)
+    }
+
     public func read(into buffer: UnsafeMutablePointer<UInt8>, maxLength: Int) throws -> Int {
         guard !isClosed, fd >= 0 else { return 0 }
 

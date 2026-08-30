@@ -123,15 +123,16 @@ We include an automated verification suite that tests APFS hole punch detection,
 ```bash
 xcrun swiftc -sdk $(xcrun --show-sdk-path) \
   -parse-as-library \
-  -I .build/modules \
   -I Sources/Clibarchive \
-  -L .build/modules \
-  -lDeleteWhenUnzipCore \
   -I /opt/homebrew/opt/libarchive/include \
   -L /opt/homebrew/opt/libarchive/lib \
   -larchive \
-  -Xlinker -rpath -Xlinker "@executable_path/../modules" \
   -Xlinker -rpath -Xlinker /opt/homebrew/opt/libarchive/lib \
+  Sources/DeleteWhenUnzipCore/Models/*.swift \
+  Sources/DeleteWhenUnzipCore/IO/*.swift \
+  Sources/DeleteWhenUnzipCore/Scanning/*.swift \
+  Sources/DeleteWhenUnzipCore/Extractor/*.swift \
+  Sources/DeleteWhenUnzipCore/Engine/*.swift \
   Tests/VerificationRunner.swift \
   -o .build/bin/run_tests && ./.build/bin/run_tests
 ```
