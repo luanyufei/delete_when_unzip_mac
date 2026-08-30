@@ -5,7 +5,7 @@ import DeleteWhenUnzipCore
 @main
 struct DeleteWhenUnzipCLI {
 
-    static let version = "0.2.0"
+    static let version = "1.2.1"
     static let repoBase = "https://github.com/luanyufei/delete_when_unzip_mac"
     static let repoAPIBase = "https://api.github.com/repos/luanyufei/delete_when_unzip_mac"
 
@@ -13,7 +13,7 @@ struct DeleteWhenUnzipCLI {
         """
         ========================================================
          dwum - DeleteWhenUnzipMac
-         边解压边删除 —— Streaming unzip with real-time space reclaim
+         Streaming unzip with real-time APFS space reclamation
         ========================================================
         """
 
@@ -21,10 +21,10 @@ struct DeleteWhenUnzipCLI {
         print("""
         \(banner)
 
-        用法: dwum <压缩包路径> [块大小(MB)] [密码]
-              dwum update            检查并更新到最新版本
+        Usage: dwum <archive-path> [chunk-size-MB] [password]
+               dwum update            Check and upgrade to latest release
 
-        详细说明请运行: dwum --help
+        For details run: dwum --help
         """)
     }
 
@@ -32,22 +32,22 @@ struct DeleteWhenUnzipCLI {
         print("""
         \(banner)
 
-        用法:
-          dwum <压缩文件路径> [块大小(MB)] [密码]
-          dwum update               检查并自动更新到最新版本
-          dwum --version | -v       查看当前版本信息
-          dwum --help | -h          查看帮助说明
+        Usage:
+          dwum <archive-path> [chunk-size-MB] [password]
+          dwum update               Check and automatically upgrade to latest release
+          dwum --version | -v       Print version information
+          dwum --help | -h          Print this help message
 
-        示例:
+        Examples:
           dwum game.zip
           dwum game.part1.rar 10 mypassword
           dwum archive.z01 50
           dwum update
 
-        参数说明:
-          <压缩文件路径>  主压缩包或首个分卷路径 (.zip, .rar, .part1.rar, .z01 等)
-          [块大小(MB)]    单次处理缓冲区大小（默认: 10 MB）
-          [密码]          压缩包密码（可选）
+        Arguments:
+          <archive-path>   Path to main archive or first volume (.zip, .rar, .part1.rar, .z01, etc.)
+          [chunk-size-MB]  Buffer chunk size in MB (default: 10 MB)
+          [password]       Archive extraction password (optional)
         """)
     }
 
@@ -80,7 +80,7 @@ struct DeleteWhenUnzipCLI {
 
         let fileURL = URL(fileURLWithPath: firstArg)
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            print("❌ 错误: 文件不存在 -> \(fileURL.path)")
+            print("Error: File does not exist -> \(fileURL.path)")
             exit(1)
         }
 
@@ -94,74 +94,73 @@ struct DeleteWhenUnzipCLI {
             password = args[3]
         }
 
-        print("🔍 正在扫描并分析压缩包: \(fileURL.lastPathComponent)")
+        print("Scanning and analyzing archive: \(fileURL.lastPathComponent)")
 
         let info: ArchiveInfo
         do {
             info = try ArchiveDetector.detect(mainFileURL: fileURL)
         } catch {
-            print("❌ 格式检测失败: \(error.localizedDescription)")
+            print("Error: Archive detection failed: \(error.localizedDescription)")
             exit(1)
         }
         guard info.type.format != .other else {
-            print("❌ 无法识别的压缩格式。支持 ZIP / RAR / 7Z / TAR / GZIP 及常见分卷。")
+            print("Error: Unsupported archive format. Supports ZIP, RAR, 7Z, TAR, GZIP, and split volumes.")
             exit(1)
         }
 
-        // 加密预探测: 只读检查，避免破坏性解压开始后才发现需要密码（届时源文件已被打洞破坏）
+        // Encryption pre-probing
         var preferUnrar = false
         let probeResult = LibArchiveExtractor.probeEncryption(volumeURLs: info.volumeURLs, password: password)
         switch probeResult {
         case .passwordRequired where password == nil:
-            print("🔒 该压缩包已加密。")
-            guard let input = promptPassword("请输入解压密码:"), !input.isEmpty else {
-                print("❌ 未输入密码，已取消。")
+            print("Archive is encrypted.")
+            guard let input = promptPassword("Enter extraction password:"), !input.isEmpty else {
+                print("Error: No password provided. Cancelled.")
                 exit(1)
             }
             password = input
         case .decoderUnsupported:
             if info.type.format == .rar {
                 guard UnRARProcess.findUnRAR() != nil else {
-                    print("❌ 该压缩包使用 libarchive 不支持的 RAR5 加密格式。")
-                    print("   请先安装 unrar: brew install --cask rar")
+                    print("Error: This archive uses RAR5 encryption which is not supported by libarchive.")
+                    print("       Please install unrar: brew install --cask rar")
                     exit(1)
                 }
                 preferUnrar = true
                 if password == nil {
-                    print("🔒 该压缩包已加密（通过 unrar 解密）。")
-                    guard let input = promptPassword("请输入解压密码:"), !input.isEmpty else {
-                        print("❌ 未输入密码，已取消。")
+                    print("Archive is encrypted (decrypting via unrar).")
+                    guard let input = promptPassword("Enter extraction password:"), !input.isEmpty else {
+                        print("Error: No password provided. Cancelled.")
                         exit(1)
                     }
                     password = input
                 }
             } else {
-                print("❌ \(ExtractionError.encryptedDecoderUnsupported(formatName: info.type.format.rawValue).localizedDescription)")
+                print("Error: \(ExtractionError.encryptedDecoderUnsupported(formatName: info.type.format.rawValue).localizedDescription)")
                 exit(1)
             }
         case .unknown where info.type.format == .rar && UnRARProcess.findUnRAR() != nil:
-            // libarchive 对该 RAR 无把握 (罕见压缩方法等)，交给能力更完整的 unrar
             preferUnrar = true
         default:
             break
         }
 
-        print("📦 识别格式: \(info.type.displayName)")
-        print("📁 目标解压目录: \(info.outputDirectoryURL.path)")
-        print("💾 压缩包总大小: \(info.formattedTotalSize)")
+        print("Format: \(info.type.displayName)")
+        print("Output Directory: \(info.outputDirectoryURL.path)")
+        print("Total Archive Size: \(info.formattedTotalSize)")
         if info.volumeURLs.count > 1 {
-            print("📚 关联分卷数量: \(info.volumeURLs.count) 卷")
+            print("Associated Volumes: \(info.volumeURLs.count) volumes")
             for (idx, vol) in info.volumeURLs.enumerated() {
                 print("   [\(idx + 1)] \(vol.lastPathComponent)")
             }
         }
 
         let available = DiskSpaceMonitor.availableDiskSpace(at: fileURL)
-        print("💽 当前磁盘可用空间: \(DiskSpaceMonitor.formatBytes(available))")
-        print("⚙️  块大小: \(chunkSizeMB) MB")
+        print("Available Disk Space: \(DiskSpaceMonitor.formatBytes(available))")
+        print("Chunk Size: \(chunkSizeMB) MB")
         print("--------------------------------------------------------")
-        print("⚠️  警告: 本操作具有破坏性，解压过程中原压缩包将被物理销毁！")
-        print("🚀 开始解压与空间实时回收...")
+        print("Warning: Destructive operation! Source archive will be physically deleted during extraction.")
+        print("Starting streaming extraction with real-time space reclamation...")
         print("--------------------------------------------------------")
 
         let startTime = Date()
@@ -189,8 +188,6 @@ struct DeleteWhenUnzipCLI {
                 } else {
                     let reader: ChunkReader
                     if format == .sevenZip {
-                        // 7z 头信息位于尾部需要随机访问: APFS 上延迟到头部解析完成后打洞，
-                        // 兼顾空间回收与随机读；非 APFS 无打洞可用，退回整体删除模式
                         if SpaceReclaimer.detectStrategy(for: info.mainVolumeURL) == .punchHole {
                             reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes,
                                                      strategy: .punchHole, punchAfterSeek: true)
@@ -232,13 +229,13 @@ struct DeleteWhenUnzipCLI {
             }
 
             let elapsed = Date().timeIntervalSince(startTime)
-            print("\n\n🎉 解压完成！总耗时: \(String(format: "%.1f", elapsed)) 秒")
+            print("\n\nExtraction completed! Total elapsed time: \(String(format: "%.1f", elapsed)) s")
             let endAvailable = DiskSpaceMonitor.availableDiskSpace(at: fileURL)
-            print("💽 释放后磁盘可用空间: \(DiskSpaceMonitor.formatBytes(endAvailable))")
-            print("📁 解压文件已保存至: \(info.outputDirectoryURL.path)")
+            print("Available Disk Space: \(DiskSpaceMonitor.formatBytes(endAvailable))")
+            print("Extracted files saved to: \(info.outputDirectoryURL.path)")
 
         } catch {
-            print("\n\n❌ 解压失败: \(error.localizedDescription)")
+            print("\n\nError: Extraction failed: \(error.localizedDescription)")
             exit(1)
         }
     }
@@ -246,28 +243,26 @@ struct DeleteWhenUnzipCLI {
     // MARK: - Update
 
     private static func performUpdate() async {
-        print("🔄 正在检查 dwum 最新版本...")
+        print("Checking for latest dwum release...")
 
         guard let latest = await fetchLatestRelease() else {
-            print("❌ 获取版本信息失败，请检查网络连接后重试。")
+            print("Error: Failed to fetch version info. Please check network connection.")
             return
         }
 
         guard isNewerVersion(latest.version, than: version) else {
-            print("✨ 当前已是最新版本 (v\(version))，无需更新。")
+            print("You are already using the latest version (v\(version)).")
             return
         }
 
-        print("🚀 发现新版本: v\(latest.version)（当前版本: v\(version)）")
+        print("New version available: v\(latest.version) (current: v\(version))")
 
-        guard confirm("是否立即升级到 v\(latest.version)? [y/n]") else {
-            print("已取消更新。可稍后手动前往 https://github.com/luanyufei/delete_when_unzip_mac/releases")
+        guard confirm("Upgrade to v\(latest.version) now? [y/n]") else {
+            print("Update cancelled. You can download manually from https://github.com/luanyufei/delete_when_unzip_mac/releases")
             return
         }
 
         let resolvedPath = Bundle.main.executableURL?.resolvingSymlinksInPath().path ?? CommandLine.arguments[0]
-        // 仅当自身二进制位于 Homebrew Cellar 内才视为 brew 安装，
-        // 避免同机存在 brew 版 dwum 时误判独立安装的二进制
         let isHomebrewInstalled = resolvedPath.contains("/Cellar/")
 
         if isHomebrewInstalled {
@@ -278,7 +273,6 @@ struct DeleteWhenUnzipCLI {
     }
 
     private static func fetchLatestRelease() async -> (version: String, assetURL: String?)? {
-        // 优先走 API；遭遇 403 匿名限额等故障时回退到 releases 页面重定向解析
         if let result = await fetchLatestViaAPI() { return result }
         return await fetchLatestViaRedirect()
     }
@@ -311,8 +305,6 @@ struct DeleteWhenUnzipCLI {
         }
     }
 
-    /// github.com 的 /releases/latest 页面会 302 到 /releases/tag/vX.Y.Z，
-    /// 从最终 URL 即可取得最新正式版本号，不受 GitHub API 匿名限额影响。
     private static func fetchLatestViaRedirect() async -> (version: String, assetURL: String?)? {
         guard let url = URL(string: "https://github.com/luanyufei/delete_when_unzip_mac/releases/latest") else {
             return nil
@@ -342,7 +334,6 @@ struct DeleteWhenUnzipCLI {
         }
     }
 
-    /// 语义化版本比较: 逐段按整数比较，位数不足补 0（0.1.9 < 0.1.10）
     private static func isNewerVersion(_ candidate: String, than current: String) -> Bool {
         let a = versionComponents(candidate)
         let b = versionComponents(current)
@@ -366,7 +357,6 @@ struct DeleteWhenUnzipCLI {
         return true
     }
 
-    /// 终端交互时关闭回显读取密码；管道等非交互场景直接读取一行
     private static func promptPassword(_ prompt: String) -> String? {
         print("\(prompt) ", terminator: "")
         let original = isInteractiveTTY() ? disableEcho() : nil
@@ -397,12 +387,12 @@ struct DeleteWhenUnzipCLI {
     }
 
     private static func upgradeViaHomebrew() async {
-        print("🍺 检测到当前通过 Homebrew 安装，正在执行 brew upgrade...")
+        print("Detected Homebrew installation, executing 'brew upgrade'...")
         let status = await runProcess("/usr/bin/env", ["brew", "upgrade", "dwum"],
                                       environment: ["HOMEBREW_NO_ASK": "1"],
                                       stdin: .nullDevice)
         guard status == 0 else {
-            print("\n❌ Homebrew 升级失败（退出码 \(status)）。可尝试先运行 'brew update' 再重试。")
+            print("\nError: Homebrew upgrade failed (exit code \(status)). Try running 'brew update' first.")
             return
         }
         var installed = await captureProcess("/opt/homebrew/bin/brew", ["list", "--versions", "dwum"])
@@ -411,70 +401,68 @@ struct DeleteWhenUnzipCLI {
         }
         let upgradedVersion = (installed ?? "").split(separator: " ").last.map(String.init) ?? ""
         if !upgradedVersion.isEmpty && upgradedVersion != version {
-            print("\n✨ 升级完成！当前已安装: dwum \(upgradedVersion)")
-            print("ℹ️ 重新运行 'dwum' 即可使用新版本。")
+            print("\nUpgrade complete! Currently installed: dwum \(upgradedVersion)")
+            print("Run 'dwum' to use the new version.")
         } else {
-            print("\n⚠️ 升级命令已执行，但版本未发生变化 (仍是 v\(version))，请检查 Homebrew 源配置。")
+            print("\nUpgrade command executed, but version unchanged (still v\(version)). Check Homebrew tap configuration.")
         }
     }
 
-    /// 独立二进制安装: 下载 release 资源包并原子替换自身
     private static func selfUpdate(assetURL: String?, newVersion: String) async {
         guard let assetURL, let downloadURL = URL(string: assetURL) else {
-            print("❌ 最新版本未提供 macOS 二进制资源包，请前往 https://github.com/luanyufei/delete_when_unzip_mac/releases 手动下载。")
+            print("Error: No macOS binary asset found for this release. Download manually from https://github.com/luanyufei/delete_when_unzip_mac/releases")
             return
         }
 
-        print("⬇️  正在下载 dwum v\(newVersion)...")
+        print("Downloading dwum v\(newVersion)...")
         let fm = FileManager.default
         let tmpDir = fm.temporaryDirectory.appendingPathComponent("dwum-update-\(UUID().uuidString)")
         do {
             try fm.createDirectory(at: tmpDir, withIntermediateDirectories: true)
             let (archiveURL, response) = try await URLSession.shared.download(from: downloadURL)
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                print("❌ 下载失败 (HTTP \(httpResponse.statusCode))。")
+                print("Error: Download failed (HTTP \(httpResponse.statusCode)).")
                 try? fm.removeItem(at: tmpDir)
                 return
             }
 
-            // 校验和验证: 发布资产附带 .sha256 sidecar，存在则强制比对
             if let expected = await fetchSidecarChecksum(downloadURL) {
                 let actual = try sha256Hex(of: archiveURL)
                 guard actual == expected else {
-                    print("❌ 校验和不匹配，已中止更新 (期望 \(expected.prefix(16))…, 实际 \(actual.prefix(16))…)。")
+                    print("Error: Checksum mismatch! Aborting update (expected \(expected.prefix(16))…, actual \(actual.prefix(16))…).")
                     try? fm.removeItem(at: tmpDir)
                     return
                 }
-                print("🔐 SHA-256 校验通过。")
+                print("SHA-256 checksum verified.")
             } else {
-                print("⚠️ 该版本未提供校验和文件，跳过完整性校验。")
+                print("Warning: No checksum file provided for this release. Skipping integrity check.")
             }
 
-            print("📦 正在解压并校验...")
+            print("Extracting and verifying binary...")
             let extractStatus = await runProcess("/usr/bin/tar", ["-xzf", archiveURL.path, "-C", tmpDir.path])
             try? fm.removeItem(at: archiveURL)
             guard extractStatus == 0 else {
-                print("❌ 解压下载的资源包失败。")
+                print("Error: Failed to extract downloaded archive.")
                 try? fm.removeItem(at: tmpDir)
                 return
             }
 
             let newBinaryURL = tmpDir.appendingPathComponent("dwum")
             guard fm.fileExists(atPath: newBinaryURL.path) else {
-                print("❌ 资源包中未找到 dwum 可执行文件。")
+                print("Error: dwum executable not found in archive.")
                 try? fm.removeItem(at: tmpDir)
                 return
             }
 
             guard let currentURL = Bundle.main.executableURL?.resolvingSymlinksInPath() else {
-                print("❌ 无法定位当前可执行文件路径。")
+                print("Error: Cannot determine current executable path.")
                 try? fm.removeItem(at: tmpDir)
                 return
             }
 
             let checkOutput = await captureProcess(newBinaryURL.path, ["--version"])
             guard checkOutput?.contains(newVersion) == true else {
-                print("❌ 新版本二进制校验失败，已中止更新，原文件未改动。")
+                print("Error: New binary verification failed. Aborting update. Original file unchanged.")
                 try? fm.removeItem(at: tmpDir)
                 return
             }
@@ -487,16 +475,16 @@ struct DeleteWhenUnzipCLI {
                 try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: currentURL.path)
             } catch {
                 try? fm.moveItem(at: backupURL, to: currentURL)
-                print("❌ 替换二进制失败，已恢复原文件: \(error.localizedDescription)")
+                print("Error: Failed to replace binary, restored original: \(error.localizedDescription)")
                 try? fm.removeItem(at: tmpDir)
                 return
             }
 
             try? fm.removeItem(at: backupURL)
             try? fm.removeItem(at: tmpDir)
-            print("\n✨ 更新完成！dwum 已升级至 v\(newVersion)。")
+            print("\nUpdate complete! dwum upgraded to v\(newVersion).")
         } catch {
-            print("❌ 自动更新失败: \(error.localizedDescription)")
+            print("Error: Automatic update failed: \(error.localizedDescription)")
             try? fm.removeItem(at: tmpDir)
         }
     }
@@ -506,7 +494,6 @@ struct DeleteWhenUnzipCLI {
         case nullDevice
     }
 
-    /// 获取发布资产对应的 .sha256 sidecar 内容 (小写十六进制)
     private static func fetchSidecarChecksum(_ assetURL: URL) async -> String? {
         guard var components = URLComponents(url: assetURL, resolvingAgainstBaseURL: false) else { return nil }
         components.path += ".sha256"
@@ -517,7 +504,6 @@ struct DeleteWhenUnzipCLI {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
             let text = String(data: data, encoding: .utf8) ?? ""
-            // 常见格式: "<hex>  <filename>"
             guard let token = text.split(separator: "\n").first?.split(separator: " ").first else { return nil }
             let hex = String(token).lowercased()
             return hex.count == 64 && hex.allSatisfy({ $0.isHexDigit }) ? hex : nil
@@ -531,8 +517,6 @@ struct DeleteWhenUnzipCLI {
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// 运行外部进程。stdin 默认连接 /dev/null: 子进程无法读取终端，
-    /// 既避免 Homebrew 的交互确认挂起，也保证升级过程非交互可控。
     @discardableResult
     private static func runProcess(_ executablePath: String,
                                    _ arguments: [String],
@@ -599,7 +583,6 @@ struct DeleteWhenUnzipCLI {
         var name = progress.currentFileName
         if name.count > 30 { name = String(name.prefix(27)) + "..." }
         let line = String(format: "\r[%@] %3d%% | %@ / %@ | %@", bar, percent, processedStr, totalStr, name)
-        // 用空格补齐上一行残留，避免终端出现旧字符
         let padding = String(repeating: " ", count: max(0, lastProgressLineLength - line.count))
         lastProgressLineLength = max(line.count, lastProgressLineLength)
         FileHandle.standardOutput.write((line + padding).data(using: .utf8)!)

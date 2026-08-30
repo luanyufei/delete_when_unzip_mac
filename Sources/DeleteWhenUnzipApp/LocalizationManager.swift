@@ -385,6 +385,16 @@ public final class LocalizationManager: ObservableObject {
             .zhHant: "Windows / Python 原版邊解壓邊刪除工具 · 原作者: auto-Dog",
             .en: "Original Windows / Python unarchiver · Author: auto-Dog"
         ],
+        "section_license": [
+            .zhHans: "开源协议",
+            .zhHant: "開源協議",
+            .en: "License"
+        ],
+        "license_desc": [
+            .zhHans: "遵循 Apache License 2.0 开源协议，自由使用与分发",
+            .zhHant: "遵循 Apache License 2.0 開源協議，自由使用與分發",
+            .en: "Licensed under Apache License 2.0. Free to use and distribute."
+        ],
         "section_update": [
             .zhHans: "软件更新",
             .zhHant: "軟體更新",

@@ -13,7 +13,7 @@ public enum UpdateCheckStatus: Equatable {
 public final class AppUpdater: ObservableObject {
     public static let shared = AppUpdater()
 
-    public static let currentVersion = "0.2.0"
+    public static let currentVersion = "1.2.1"
     public static let repoOwner = "luanyufei"
     public static let repoName = "delete_when_unzip_mac"
     public static let repoURL = URL(string: "https://github.com/\(repoOwner)/\(repoName)")!

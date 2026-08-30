@@ -30,9 +30,9 @@ public enum ArchiveType: Sendable, Equatable {
     public var displayName: String {
         switch self {
         case .single(let f):
-            return "单文件 \(f.rawValue)"
+            return "Single-file \(f.rawValue)"
         case .multiVolume(let f):
-            return "多分卷 \(f.rawValue)"
+            return "Multi-volume \(f.rawValue)"
         }
     }
 }

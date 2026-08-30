@@ -334,7 +334,47 @@ private struct AboutSettingsPane: View {
                     }
                 }
 
-                // 4. 软件更新卡片 (字靠左、Switch 靠右、按钮与状态完美对齐)
+                // 4. 开源协议卡片 (License)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(l10n.t("section_license"))
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    SettingsCardView {
+                        HStack(alignment: .center, spacing: 14) {
+                            Image(systemName: "doc.text.fill")
+                                .font(.system(size: 34))
+                                .foregroundStyle(Color.accentColor.opacity(0.85))
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Apache License 2.0")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+
+                                Text(l10n.t("license_desc"))
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                if let url = URL(string: "https://github.com/luanyufei/delete_when_unzip_mac/blob/main/LICENSE") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            } label: {
+                                Image(systemName: "arrow.up.forward.app")
+                                    .font(.title3)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("View License")
+                        }
+                        .padding(16)
+                    }
+                }
+
+                // 5. 软件更新卡片 (字靠左、Switch 靠右、按钮与状态完美对齐)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(l10n.t("section_update"))
                         .font(.headline)
