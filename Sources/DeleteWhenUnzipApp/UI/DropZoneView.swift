@@ -46,6 +46,7 @@ public struct DropZoneView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .noFocusEffect()
             }
             .padding(40)
             .frame(maxWidth: .infinity, maxHeight: 340)

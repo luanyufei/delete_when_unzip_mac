@@ -2,14 +2,8 @@ import SwiftUI
 import AppKit
 import DeleteWhenUnzipCore
 
-public final class ContentViewModel: ObservableObject {
-    @Published public var showingSettings: Bool = false
-    public init() {}
-}
-
 public struct ContentView: View {
     @StateObject private var engine = ExtractionEngine()
-    @StateObject private var vm = ContentViewModel()
     @AppStorage("autoRevealInFinder") private var autoRevealInFinder: Bool = true
     @AppStorage("showDestructiveWarning") private var showDestructiveWarning: Bool = true
     @AppStorage("defaultChunkSizeMB") private var defaultChunkSizeMB: Int = 10
@@ -110,23 +104,33 @@ public struct ContentView: View {
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        vm.showingSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .help("偏好设置")
+                    openSettingsButton
                 }
             }
         }
         .frame(minWidth: 660, minHeight: 560)
-        .sheet(isPresented: $vm.showingSettings) {
-            SettingsView()
-        }
         .onReceive(NotificationCenter.default.publisher(for: .openFileNotification)) { notification in
             if let url = notification.object as? URL {
                 engine.analyze(fileURL: url)
             }
+        }
+    }
+
+    /// 偏好设置入口: 优先使用系统 Settings 窗口 (自带关闭按钮)
+    @ViewBuilder
+    private var openSettingsButton: some View {
+        if #available(macOS 14.0, *) {
+            SettingsLink {
+                Image(systemName: "gearshape")
+            }
+            .help("偏好设置")
+        } else {
+            Button {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .help("偏好设置")
         }
     }
 }
