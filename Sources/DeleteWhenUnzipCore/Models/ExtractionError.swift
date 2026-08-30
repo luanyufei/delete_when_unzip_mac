@@ -13,6 +13,7 @@ public enum ExtractionError: LocalizedError, Sendable {
     case unrarFailed(exitCode: Int32, message: String)
     case passwordRequired
     case wrongPassword
+    case encryptedDecoderUnsupported(formatName: String)
     case extractionCancelled
     case insufficientDiskSpace(requiredBytes: UInt64, availableBytes: UInt64)
     case unknown(String)
@@ -43,6 +44,8 @@ public enum ExtractionError: LocalizedError, Sendable {
             return "该压缩文件已加密，需要提供解压密码。"
         case .wrongPassword:
             return "解压密码错误。"
+        case .encryptedDecoderUnsupported(let formatName):
+            return "该压缩包的加密格式（\(formatName)）超出 libarchive 解码能力，暂无法解密。RAR 加密包可安装 unrar 后重试: brew install --cask rar"
         case .extractionCancelled:
             return "解压任务已被用户中止。"
         case .insufficientDiskSpace(let req, let avail):

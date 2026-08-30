@@ -61,6 +61,7 @@ public struct VolumeScanner: Sendable {
 
         // 按主卷后缀判定分卷家族 (z01/r01 家族的首卷为 .zNN/.rNN、末卷为 .zip/.rar)
         let familyPatterns: [String]
+        var isBareNumericFamily = false
         if mainMatches(#"\.part\d+\.rar$"#) {
             familyPatterns = [escapedBase + #"\.part\d+\.rar$"#]
         } else if mainMatches(#"\.zip\.\d+$"#) {
@@ -79,6 +80,7 @@ public struct VolumeScanner: Sendable {
             familyPatterns = [escapedBase + #"\.zip$"#, escapedBase + #"\.z\d+$"#]
         } else if mainMatches(#"\.\d{3,}$"#) {
             familyPatterns = [escapedBase + #"\.\d{3,}$"#]
+            isBareNumericFamily = true
         } else {
             familyPatterns = ["^" + NSRegularExpression.escapedPattern(for: filename) + "$"]
         }
@@ -96,6 +98,21 @@ public struct VolumeScanner: Sendable {
 
         if matchedFiles.isEmpty {
             return [mainVolumeURL]
+        }
+
+        // 纯数字分卷 (game.001) 语义最模糊，仅当编号从 1 起连续时才视为同一套分卷，
+        // 避免把同名无关文件当成成员连带删除
+        if isBareNumericFamily {
+            func numericSuffix(_ name: String) -> Int? {
+                guard let range = name.range(of: #"\.(\d{3,})$"#, options: .regularExpression) else { return nil }
+                let digits = name[range].drop(while: { !$0.isNumber })
+                return Int(digits)
+            }
+            let numbers = matchedFiles.compactMap(numericSuffix).sorted()
+            if numbers.count != matchedFiles.count || numbers.first != 1
+                || zip(numbers, numbers.dropFirst()).contains(where: { $1 - $0 != 1 }) {
+                return [mainVolumeURL]
+            }
         }
 
         // 排序: zNN/rNN 家族中 .zip/.rar 末卷排在最后，其余按自然数字序

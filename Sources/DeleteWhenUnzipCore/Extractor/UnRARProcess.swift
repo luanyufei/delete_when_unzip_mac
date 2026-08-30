@@ -95,9 +95,10 @@ public final class UnRARProcess: Sendable {
             try Task.checkCancellation()
             outputAccumulator += line + "\n"
 
-            if line.contains("Extracting from") || line.contains("Extracting ") {
-                // 等待 1 秒确保上一卷已被 unrar 读取完毕
-                try? await Task.sleep(for: .seconds(1))
+            // unrar 的换卷横幅固定为 "Extracting from <卷名>"；
+            // 不能宽松匹配 "Extracting "，否则单文件进度行会触发误删卷
+            if line.contains("Extracting from") {
+                // unrar 宣布开始读取下一卷，意味着之前的卷已读取完毕，可立即删除
                 if pendingVolumes.count > 1 {
                     let volumeToDelete = pendingVolumes.removeFirst()
                     try? fileManager.removeItem(at: volumeToDelete)

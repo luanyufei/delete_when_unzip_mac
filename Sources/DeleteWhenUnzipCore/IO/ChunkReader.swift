@@ -21,6 +21,9 @@ public final class ChunkReader: StreamDataSource {
     public let fileURL: URL
     public let chunkSize: Int
     public let strategy: ReclaimStrategy
+    /// 延迟打洞 (7z): libarchive 解析头部时需要回跳 seek，首次回跳前禁止打洞；
+    /// 进入顺序消费阶段后再正常边读边释放。仅对打洞策略生效。
+    public let punchAfterSeek: Bool
     public private(set) var totalSize: UInt64 = 0
     public private(set) var consumedBytes: UInt64 = 0
 
@@ -29,11 +32,14 @@ public final class ChunkReader: StreamDataSource {
     private var readOffset: off_t = 0
     private var lastPunchedOffset: off_t = 0
     private var isClosed = false
+    private var seekPhaseArmed = false
 
-    public init(fileURL: URL, chunkSize: Int = 10 * 1024 * 1024, strategy: ReclaimStrategy? = nil) throws {
+    public init(fileURL: URL, chunkSize: Int = 10 * 1024 * 1024,
+                strategy: ReclaimStrategy? = nil, punchAfterSeek: Bool = false) throws {
         self.fileURL = fileURL
         self.chunkSize = max(64 * 1024, chunkSize)
         self.strategy = strategy ?? SpaceReclaimer.detectStrategy(for: fileURL)
+        self.punchAfterSeek = punchAfterSeek
 
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw ExtractionError.fileNotFound(fileURL)
@@ -45,6 +51,10 @@ public final class ChunkReader: StreamDataSource {
         let handle = try FileHandle(forUpdating: fileURL)
         self.fileHandle = handle
         self.fd = handle.fileDescriptor
+    }
+
+    private var punchingActive: Bool {
+        strategy == .punchHole && (!punchAfterSeek || seekPhaseArmed)
     }
 
     public func read(into buffer: UnsafeMutablePointer<UInt8>, maxLength: Int) throws -> Int {
@@ -61,10 +71,12 @@ public final class ChunkReader: StreamDataSource {
                 consumedBytes += UInt64(bytesRead)
 
                 // 保持安全边距：当已读数据超过 2 个 chunk 时，将较早的已消费物理块打洞释放
-                let punchableLength = readOffset - lastPunchedOffset - off_t(chunkSize)
-                if punchableLength >= off_t(chunkSize) {
-                    try? SpaceReclaimer.punchHole(fd: fd, offset: lastPunchedOffset, length: punchableLength)
-                    lastPunchedOffset += punchableLength
+                if punchingActive {
+                    let punchableLength = readOffset - lastPunchedOffset - off_t(chunkSize)
+                    if punchableLength >= off_t(chunkSize) {
+                        try? SpaceReclaimer.punchHole(fd: fd, offset: lastPunchedOffset, length: punchableLength)
+                        lastPunchedOffset += punchableLength
+                    }
                 }
             }
 
@@ -86,9 +98,9 @@ public final class ChunkReader: StreamDataSource {
         }
 
         if bytesRead == 0 {
-            // 顺序策略下读到 0 字节即真实 EOF; 随机访问策略 (.none/7z) 会探测性读取
+            // 顺序策略下读到 0 字节即真实 EOF; 随机访问策略 (.none / 延迟打洞) 会探测性读取
             // 文件末尾，此处严禁销毁源文件 —— 成功结束时由 extractor 统一 finalizeAndRemove
-            if strategy != .none {
+            if !supportsRandomAccess {
                 finalizeAndRemove()
             }
         }
@@ -106,13 +118,26 @@ public final class ChunkReader: StreamDataSource {
         fd = -1
     }
 
-    /// 仅 .none 策略 (7z 等需随机访问的格式) 支持寻址:
-    /// 打洞与平移截断均已物理销毁已读数据，向后寻址必然读到空洞
-    public var supportsRandomAccess: Bool { strategy == .none }
+    /// .none 完全随机访问; 延迟打洞模式允许寻址，但仅限未打洞区域
+    public var supportsRandomAccess: Bool {
+        if strategy == .none { return true }
+        if strategy == .punchHole && punchAfterSeek { return true }
+        return false
+    }
 
     public func seek(toOffset target: off_t) -> off_t {
         guard supportsRandomAccess, !isClosed, fd >= 0,
               target >= 0, target <= off_t(totalSize) else { return -1 }
+        if target < lastPunchedOffset {
+            // 回跳进入已打洞区域 —— 数据已被物理释放，明确失败优于静默损坏
+            return -1
+        }
+        // 仅认可"深回跳"为头部解析完成的信号 (7z: 从文件尾跳回起始头部，
+        // 幅度巨大)。数据阶段的微小回退 (libarchive 缓冲抖动，<1MB) 不放行打洞，
+        // 由 2 chunk 安全边距兜底。
+        if !seekPhaseArmed, target < readOffset - max(64 * 1024 * 1024, off_t(4) * off_t(chunkSize)) {
+            seekPhaseArmed = true
+        }
         readOffset = target
         return target
     }

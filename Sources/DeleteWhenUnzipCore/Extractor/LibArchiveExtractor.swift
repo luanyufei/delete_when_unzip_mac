@@ -223,3 +223,73 @@ public final class LibArchiveExtractor: Extractor, @unchecked Sendable {
         ))
     }
 }
+
+/// 加密探测结论
+public enum ArchiveEncryption: Sendable {
+    case notEncrypted        // 直接解压
+    case passwordRequired    // libarchive 可解密但需要密码 (zip/7z 等)
+    case decoderUnsupported  // libarchive 无法解码该加密格式 (RAR5)，需要 unrar
+    case unknown             // 探测未得出结论，交给正常解压流程处理
+}
+
+extension LibArchiveExtractor {
+
+    /// 只读探测压缩包是否加密: 打开后抽样读取首个条目的前 64KB 并归类错误。
+    /// 不打洞、不删除任何文件，任何异常都返回 .unknown 交由正常解压流程兜底。
+    /// 在破坏性解压开始前调用，避免"读到一半才发现要密码、源文件已被打洞破坏"。
+    public static func probeEncryption(volumeURLs: [URL], password: String?) -> ArchiveEncryption {
+        let source: StreamDataSource
+        do {
+            if volumeURLs.count == 1 {
+                // 注意: strategy 参数是 Optional，必须写全名 ReclaimStrategy.none，
+                // 裸 .none 会被推断为 Optional.none (nil) 而回落到打洞策略
+                source = try ChunkReader(fileURL: volumeURLs[0], chunkSize: 1024 * 1024, strategy: ReclaimStrategy.none)
+            } else {
+                source = try VolumeChainReader(volumes: volumeURLs, chunkSize: 1024 * 1024, deletesVolumesAsRead: false)
+            }
+        } catch {
+            return .unknown
+        }
+        defer { source.close() }
+
+        guard let archive = archive_read_new() else { return .unknown }
+        defer { archive_read_free(archive) }
+        archive_read_support_filter_all(archive)
+        archive_read_support_format_all(archive)
+        if let pwd = password, !pwd.isEmpty {
+            archive_read_add_passphrase(archive, pwd)
+        }
+
+        let context = LibArchiveReadContext(source: source)
+        let contextPtr = Unmanaged.passRetained(context).toOpaque()
+        defer { Unmanaged<LibArchiveReadContext>.fromOpaque(contextPtr).release() }
+        archive_read_set_callback_data(archive, contextPtr)
+        archive_read_set_read_callback(archive, archiveReadCallback)
+        // 探测源为只读模式，不注册 close 回调，由 defer 统一关闭
+        if source.supportsRandomAccess {
+            archive_read_set_seek_callback(archive, archiveSeekCallback)
+        }
+
+        guard archive_read_open1(archive) == ARCHIVE_OK else { return .unknown }
+
+        var entry: OpaquePointer?
+        let headerStatus = archive_read_next_header(archive, &entry)
+        if headerStatus == ARCHIVE_EOF { return .notEncrypted }
+        if headerStatus != ARCHIVE_OK {
+            return classifyEncryptionError(archive)
+        }
+
+        var buffer = [UInt8](repeating: 0, count: 65536)
+        let n = archive_read_data(archive, &buffer, buffer.count)
+        if n < 0 { return classifyEncryptionError(archive) }
+        return .notEncrypted
+    }
+
+    private static func classifyEncryptionError(_ archive: OpaquePointer) -> ArchiveEncryption {
+        let raw = archive_error_string(archive).map { String(cString: $0) } ?? ""
+        let lower = raw.lowercased()
+        if lower.contains("passphrase") { return .passwordRequired }
+        if lower.contains("encrypt") { return .decoderUnsupported }
+        return .unknown
+    }
+}

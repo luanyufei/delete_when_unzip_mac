@@ -34,11 +34,14 @@ public final class ExtractionEngine: ObservableObject {
     @Published public var state: EngineState = .idle
     @Published public var currentInfo: ArchiveInfo?
     @Published public var availableDiskSpaceFormatted: String = ""
+    /// 加密预探测结论: 为 .passwordRequired 时 UI 必须先收集密码
+    @Published public var requiresPassword: Bool = false
 
     private var extractionTask: Task<Void, Never>?
     private var startTime: Date?
     private var lastBytes: UInt64 = 0
     private var lastTime: Date?
+    private var encryptionProbe: ArchiveEncryption = .unknown
 
     public init() {}
 
@@ -49,12 +52,21 @@ public final class ExtractionEngine: ObservableObject {
 
     public func analyze(fileURL: URL) {
         state = .analyzing
+        requiresPassword = false
         updateAvailableDiskSpace(for: fileURL)
 
         Task {
             do {
                 let info = try ArchiveDetector.detect(mainFileURL: fileURL)
+                guard info.type.format != .other else {
+                    self.state = .failed(.unsupportedFormat("无法识别的压缩格式。支持 ZIP / RAR / 7Z / TAR / GZIP 及常见分卷"))
+                    return
+                }
                 self.currentInfo = info
+                // 加密预探测: 在展示确认页之前识别加密需求，避免破坏性解压启动后失败
+                let probe = LibArchiveExtractor.probeEncryption(volumeURLs: info.volumeURLs, password: nil)
+                self.encryptionProbe = probe
+                self.requiresPassword = (probe == .passwordRequired)
                 self.state = .ready(info)
             } catch let err as ExtractionError {
                 self.state = .failed(err)
@@ -79,57 +91,80 @@ public final class ExtractionEngine: ObservableObject {
             speed: "计算中..."
         )
 
+        let probe = self.encryptionProbe
         extractionTask = Task.detached { [weak self] in
             let engine = self
             do {
-                switch info.type {
-                case .single(let format):
-                    // 7z 头信息位于尾部，必须随机访问读取，不能边读边打洞
-                    let strategy: ReclaimStrategy? = (format == .sevenZip) ? ReclaimStrategy.none : nil
-                    let reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes, strategy: strategy)
-                    let extractor = LibArchiveExtractor()
-                    try await extractor.extract(
-                        source: reader,
-                        to: info.outputDirectoryURL,
+                // 加密守卫: 需要密码但未提供时直接失败，交由 UI 收集后重新发起
+                if case .passwordRequired = probe,
+                   password == nil || password!.isEmpty {
+                    await MainActor.run { engine?.state = .failed(.passwordRequired) }
+                    return
+                }
+
+                let unrarAvailable = UnRARProcess.findUnRAR() != nil
+                let preferUnrar: Bool
+                switch probe {
+                case .decoderUnsupported, .unknown:
+                    preferUnrar = info.type.format == .rar && unrarAvailable
+                default:
+                    preferUnrar = false
+                }
+                if probe == .decoderUnsupported && !unrarAvailable {
+                    await MainActor.run {
+                        engine?.state = .failed(.encryptedDecoderUnsupported(formatName: info.type.format.rawValue))
+                    }
+                    return
+                }
+
+                func runUnrar(volumes: [URL]) async throws {
+                    let unrar = UnRARProcess()
+                    try await unrar.extractAndDelete(
+                        mainVolume: info.mainVolumeURL,
+                        volumes: volumes,
+                        outputDirectory: info.outputDirectoryURL,
                         password: password
                     ) { progress in
                         Task { @MainActor in
                             engine?.handleProgress(progress)
                         }
                     }
+                }
 
-                case .multiVolume(let format):
-                    if format == .rar {
-                        // 分卷 RAR 优先尝试使用 unrar 监控方案，如果无 unrar 则使用 libarchive 链式流
-                        if UnRARProcess.findUnRAR() != nil {
-                            let unrar = UnRARProcess()
-                            try await unrar.extractAndDelete(
-                                mainVolume: info.mainVolumeURL,
-                                volumes: info.volumeURLs,
-                                outputDirectory: info.outputDirectoryURL,
-                                password: password
-                            ) { progress in
-                                Task { @MainActor in
-                                    engine?.handleProgress(progress)
-                                }
+                switch info.type {
+                case .single(let format):
+                    if format == .rar && preferUnrar {
+                        try await runUnrar(volumes: [info.mainVolumeURL])
+                    } else {
+                        let reader: ChunkReader
+                        if format == .sevenZip {
+                            // 7z 头信息位于尾部需要随机访问: APFS 上延迟到头部解析完成后打洞，
+                            // 兼顾空间回收与随机读；非 APFS 无打洞可用，退回整体删除模式
+                            if SpaceReclaimer.detectStrategy(for: info.mainVolumeURL) == .punchHole {
+                                reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes,
+                                                         strategy: .punchHole, punchAfterSeek: true)
+                            } else {
+                                reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes,
+                                                         strategy: ReclaimStrategy.none)
                             }
                         } else {
-                            let chainReader = try VolumeChainReader(
-                                volumes: info.volumeURLs,
-                                chunkSize: chunkSizeBytes,
-                                deletesVolumesAsRead: format != .sevenZip
-                            )
-                            let extractor = LibArchiveExtractor()
-                            try await extractor.extract(
-                                source: chainReader,
-                                to: info.outputDirectoryURL,
-                                password: password
-                            ) { progress in
-                                Task { @MainActor in
-                                    engine?.handleProgress(progress)
-                                }
+                            reader = try ChunkReader(fileURL: info.mainVolumeURL, chunkSize: chunkSizeBytes)
+                        }
+                        let extractor = LibArchiveExtractor()
+                        try await extractor.extract(
+                            source: reader,
+                            to: info.outputDirectoryURL,
+                            password: password
+                        ) { progress in
+                            Task { @MainActor in
+                                engine?.handleProgress(progress)
                             }
                         }
+                    }
+
+                case .multiVolume(let format):
+                    if format == .rar && (unrarAvailable || preferUnrar) {
+                        try await runUnrar(volumes: info.volumeURLs)
                     } else {
                         // 分卷 ZIP / TAR 等使用 libarchive 链式流逐卷解压并删除
                         let chainReader = try VolumeChainReader(
@@ -180,6 +215,7 @@ public final class ExtractionEngine: ObservableObject {
     public func reset() {
         cancel()
         currentInfo = nil
+        requiresPassword = false
         state = .idle
     }
 

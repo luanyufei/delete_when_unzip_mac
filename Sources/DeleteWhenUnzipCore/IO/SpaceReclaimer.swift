@@ -44,10 +44,15 @@ public struct SpaceReclaimer: Sendable {
         return .shiftTruncate
     }
 
-    /// APFS 打洞: 将 [offset, offset + length) 区间的物理块释放归还给系统
+    /// APFS 打洞: 将 [offset, offset + length) 区间的物理块释放归还给系统。
+    /// 内核要求打洞范围按文件系统块对齐，这里取对齐后的内部区间，不足一块则跳过。
     public static func punchHole(fd: Int32, offset: off_t, length: off_t) throws {
         guard length > 0 else { return }
-        var punch = FPunchHole(offset: offset, length: length)
+        let blockSize: off_t = 4096
+        let alignedOffset = ((offset + blockSize - 1) / blockSize) * blockSize
+        let alignedEnd = ((offset + length) / blockSize) * blockSize
+        guard alignedEnd > alignedOffset else { return }
+        var punch = FPunchHole(offset: alignedOffset, length: alignedEnd - alignedOffset)
         let result = withUnsafeMutablePointer(to: &punch) { ptr in
             fcntl(fd, F_PUNCHHOLE, ptr)
         }
